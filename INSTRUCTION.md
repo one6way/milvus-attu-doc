@@ -6,11 +6,23 @@
 
 ## 0. Что понадобится
 
+Базово (для обоих вариантов поиска):
+
 - **Windows 10/11** и **Docker Desktop** (запущен, режим **Linux containers**).
 - **Git** (или скачай репо ZIP с GitHub вручную).
-- **Python 3.10+** (нужен только для скриптов заливки/поиска).
+- **Python 3.10+** (для скриптов заливки/поиска).
 - Свободные порты: **13000**, **19530**, **9000**, **9001**.
 - Интернет на первую загрузку образов (~1.3 ГБ).
+
+Дополнительно — **зависит от варианта поиска**:
+
+| Вариант поиска | Что ещё нужно | Токены |
+|----------------|---------------|--------|
+| **A. Без модели (BM25, по словам)** | ничего (только базовое выше) | 0 |
+| **B. С моделью (по смыслу)** | **эмбеддинг-сервер** с API `/v1/embeddings` — LM Studio (локально) или любой OpenAI-совместимый | 0 (LM Studio) / платно (внешний) |
+
+> ⚠️ **Чат-LLM ≠ эмбеддинги.** Cline/OpenAI-чат делают `/chat/completions`, а для семантики нужен
+> `/v1/embeddings`. Это разные вещи. Чат-ключ годится только для AI-агента (ответ текстом), не для поиска по смыслу.
 
 Проверить, что Docker готов:
 ```powershell
@@ -89,7 +101,7 @@ python -m pip install -r .\scripts\requirements-vectorize.txt
 | Кейс | Модель | Поиск ищет | Что нужно |
 |------|--------|-----------|-----------|
 | **A. Без модели (BM25)** | не нужна | по словам | только Python-скрипт |
-| **B. С моделью (OpenAI-compatible)** | нужна | по смыслу | endpoint эмбеддингов |
+| **B. С моделью (эмбеддинги)** | нужна | по смыслу | сервер с `/v1/embeddings` (LM Studio или внешний) |
 
 ### Кейс A — БЕЗ модели (BM25, поиск по словам)
 
@@ -106,65 +118,90 @@ python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\file.docx" --collec
 
 Проверь в Attu: обнови список — появится коллекция `docs_ft`. Открой её → увидишь строки (текст).
 
-### Кейс B — С моделью: подключение по **OpenAI-compatible** (поиск по смыслу)
+### Кейс B — С моделью (поиск по смыслу, эмбеддинги)
 
-Здесь текст превращается в вектор **внешней** моделью — её подключаем по OpenAI-совместимому API.
-Ничего тяжёлого ставить не надо (`requests` уже есть после шага 4).
+Текст превращается в вектор **моделью эмбеддингов**. Нужен сервер с API **`/v1/embeddings`**. Два подварианта.
 
-**Что подготовить (3 значения):**
+#### B1. Локально через **LM Studio** (0 токенов, рекомендую)
+
+1. Установи **LM Studio** (lmstudio.ai) и запусти.
+2. Скачай модель: вкладка поиска моделей → найди `nomic-embed-text-v1.5` → **Download**.
+3. Вкладка **Developer** (иконка сервера) → **Start Server** (порт **1234**).
+4. (Опц.) Включи auth: **Server Settings → Require Authentication → Manage Tokens → Create Token**,
+   скопируй токен (показывается один раз). Без auth токен не нужен.
+5. Проверь, что модель видна:
+   ```powershell
+   curl.exe -s http://127.0.0.1:1234/v1/models -H "Authorization: Bearer <ТОКЕН>"
+   ```
+6. Заливай **из папки репо** (проверено: 6657 чанков ≈ 48 сек):
+   ```powershell
+   python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\voina-i-mir.docx" --collection voina_i_mir `
+     --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 `
+     --embedder api --api-base http://127.0.0.1:1234/v1 --api-key "<ТОКЕН LM STUDIO>" `
+     --api-model text-embedding-nomic-embed-text-v1.5 --batch 64 --recreate
+   ```
+
+| Параметр | Значение для LM Studio |
+|----------|------------------------|
+| `--api-base` | `http://127.0.0.1:1234/v1` |
+| `--api-key` | токен из LM Studio (или `""`, если auth выключен) |
+| `--api-model` | `text-embedding-nomic-embed-text-v1.5` |
+
+#### B2. Внешний **OpenAI-совместимый** endpoint
 
 | Параметр | Что это | Пример |
 |----------|---------|--------|
 | `--api-base` | базовый URL до `/v1` | `https://api.openai.com/v1`, `http://localhost:11434/v1` (Ollama), `http://localhost:8080/v1` (TEI) |
-| `--api-key` | ключ (для локальных может быть пустым: `--api-key ""`) | `sk-...` |
+| `--api-key` | ключ (у локальных может быть пустым) | `sk-...` |
 | `--api-model` | имя модели эмбеддингов | `text-embedding-3-small`, `bge-m3` |
 
-**Проверить, что endpoint отвечает** (необязательно):
-```powershell
-curl.exe -s http://localhost:11434/v1/models      # свой base URL
-```
-
-**Залить документ через endpoint:**
 ```powershell
 python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\file.docx" --collection docs_sem `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 `
   --embedder api --api-base https://<твой-хост>/v1 --api-key <ключ> --api-model text-embedding-3-small
 ```
-> Если сервер локальный и без ключа — убери `--api-key` или поставь `--api-key ""`.
+> Трабл: `API 404` → base должен оканчиваться на `/v1`; `API 401/403` → неверный ключ;
+> `не удалось подключиться` → сервер не запущен.
 
-Что произойдёт: скрипт попросит у endpoint векторы для каждого чанка и создаст коллекцию `docs_sem`
-с полем `vector` (эмбеддинги) + текстом.
+#### Настроить ту же модель в Attu (для поиска из UI)
 
-**Настроить ту же модель в Attu** (чтобы AI-поиск в UI строил вектор запроса той же моделью):
-Attu → **Settings → Embeddings** → провайдер **OpenAI-compatible** → тот же `baseUrl` (с `/v1`),
-тот же `apiKey` и та же `model`, что в команде выше.
+Attu → **Settings → Embeddings** → **Add Provider** → заполни **Provider** (OpenAI или Custom),
+**Base URL** (тот же, до `/v1`), **API Key**, **Model Name** (та же модель), **Dimension**.
 
-> ⚠️ **Модель для документов и для запроса обязана совпадать.** Залил `text-embedding-3-small` —
-> и в Attu должна быть она же (или так же спрашивай из Python, см. раздел 6, Вариант 2).
+> ⚠️ **Модель документов и модель запроса обязаны совпадать.**
+> Для локального LM Studio из контейнера Attu адрес — `http://host.docker.internal:1234/v1`
+> (проверь кнопкой Test в настройках).
 
-> Коллекция из Кейса A (`docs_ft`) и из Кейса B (`docs_sem`) — **разные**: это нормально,
-> разные типы поиска живут в разных коллекциях.
+> Коллекции из Кейса A (`docs_ft`) и Кейса B (`docs_sem`/`voina_i_mir`) — **разные**: это нормально.
 
-**(Опционально) своя локальная модель вместо endpoint** — если хочешь 0 токенов офлайн:
+#### B3 (опция). Своя модель в Python без сервера
+
 ```powershell
 python -m pip install torch --index-url https://download.pytorch.org/whl/cu128
 python -m pip install "sentence-transformers>=3.0.0"
 python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\file.docx" --collection docs_sem `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123
 ```
+> Для поиска из Attu UI этот путь не подходит — там нужен HTTP-провайдер (B1/B2).
 
 ---
 
 ## 6. Как искать — 2 варианта
 
+> Сначала коллекция должна быть **загружена в память** (Load), иначе Attu скажет
+> «Collection must be loaded to search».
+
 ### Вариант 1 — по словам (без модели), коллекция `docs_ft`
 
-**В Attu:**
-1. Открой коллекцию `docs_ft`.
-2. Нажми **Search** (или поле поиска сверху).
-3. Выбери режим **full-text / BM25** (sparse-вектор).
-4. Введи запрос **словами**, например: `автоматизация развёртывания`.
-5. Run — увидишь подходящие куски текста и score.
+Эта коллекция создана с функцией **BM25** (текст → sparse-вектор автоматически).
+
+**В Attu (точно куда нажимать):**
+1. Войди, выбери подключение, открой слева коллекцию **`docs_ft`**.
+2. Открой вкладку **Search** (панель называется **Vector Search**).
+3. Пока пусто → кнопка **Add a search request** (или **+**). Выбери тип **Full-Text**.
+4. **Text Field** — выбери поле `text`.
+5. **Search Text** — введите запрос словами, напр. `автоматизация развёртывания`.
+6. Нажми **Search** → снизу результаты: совпавшие куски + score.
 
 **Из Python (проверено):**
 ```powershell
@@ -172,21 +209,36 @@ python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\file.docx" --collec
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 --demo `
   --query "автоматизация развёртывания контейнеров"
 ```
-> BM25 ищет **совпадения слов**. Синонимы не находит (нужен Кейс B).
+> BM25 ищет **совпадения слов**. Синонимы не находит → нужен Вариант 2.
 
-### Вариант 2 — по смыслу (с моделью), коллекция `docs_sem`
+### Вариант 2 — по смыслу (с моделью), коллекция `docs_sem`/`voina_i_mir`
 
-Вектор запроса надо посчитать **той же моделью**, что и данные. Два способа:
+Вектор запроса считает модель. Есть 3 способа:
 
-**2a. Через тот же OpenAI-compatible endpoint (совпадает с Кейсом B):**
+#### Способ A — из Attu UI (нужен embedding-провайдер в настройках)
+
+1. Сначала настрой провайдер эмбеддингов: **Settings → Embeddings → Add Provider**
+   (**Base URL** до `/v1`, **API Key**, **Model Name** — та же модель, что при заливке).
+   Для LM Studio из контейнера Attu: `http://host.docker.internal:1234/v1`.
+2. Открой коллекцию (`voina_i_mir`) → вкладка **Search**.
+3. **Add a search request** → тип **Vector**.
+4. **Vector Field** — выбери поле `vector`.
+5. Вместо ручного вектора выбери **Similarity Text** и введи фразу
+   (подсказка: *Enter text to find approximately similar content*) — Attu сам посчитает вектор запроса.
+6. **Metric** — `COSINE`. Нажми **Search**.
+
+> Если п.1 не настроен, Attu напишет «No embedding providers configured» и Similarity Text не сработает.
+
+#### Способ B — из Python через тот же endpoint (проверено)
+
 ```python
 import requests
 from pymilvus import MilvusClient
 
-BASE   = "https://<твой-хост>/v1"     # тот же base, что при заливке
-KEY    = "<ключ>"                      # или "" для локального без ключа
-MODEL  = "text-embedding-3-small"      # та же модель, что при заливке
-QUERY  = "как масштабировать приложение"
+BASE   = "http://127.0.0.1:1234/v1"      # тот же base, что при заливке
+KEY    = "<ТОКЕН LM STUDIO>"             # или "" если auth выключен
+MODEL  = "text-embedding-nomic-embed-text-v1.5"   # та же модель
+QUERY  = "описание Бородинского сражения"
 
 r = requests.post(f"{BASE}/embeddings",
                   headers={"Authorization": f"Bearer {KEY}"},
@@ -194,12 +246,12 @@ r = requests.post(f"{BASE}/embeddings",
 qvec = r.json()["data"][0]["embedding"]
 
 c = MilvusClient(uri="http://127.0.0.1:19530", token="root:MilvusDemo123")
-hits = c.search("docs_sem", data=[qvec], anns_field="vector", limit=3, output_fields=["content"])
-for h in hits[0]:
-    print(h["distance"], h["entity"]["content"][:100])
+for h in c.search("voina_i_mir", data=[qvec], anns_field="vector", limit=3, output_fields=["content"])[0]:
+    print(h["distance"], h["entity"]["content"][:120].replace("\n", " "))
 ```
 
-**2b. Локальной моделью (если заливал офлайн-моделью):**
+#### Способ C — локальной моделью bge-m3 (если заливал B3)
+
 ```python
 from pymilvus import MilvusClient
 from sentence_transformers import SentenceTransformer
@@ -210,16 +262,36 @@ for h in c.search("docs_sem", data=[qvec], anns_field="vector", limit=3, output_
     print(h["distance"], h["entity"]["content"][:100])
 ```
 
-**В Attu (AI-поиск):** открой коллекцию → панель **AI/Search**. Attu сам строит вектор запроса,
-поэтому в **Settings → Embeddings** укажи **тот же** OpenAI-compatible `baseUrl` (с `/v1`),
-`apiKey` и **модель**, что использовались при заливке. Иначе результаты будут мимо.
-
-> Вариант 2 ищет **по смыслу**: запрос «масштабирование нагрузки» найдёт текст про
-> «scale up при росте трафика», даже если слов нет.
+> Вариант 2 ищет **по смыслу**: «канонада» найдётся по запросу «Бородинское сражение», хотя этих слов рядом нет.
 
 ---
 
-## 7. Остановить / удалить
+## 7. AI-агент: вопрос по документу текстом (LLM)
+
+Поиск (раздел 6) отдаёт **куски** текста. Если хочешь, чтобы **модель написала ответ** по этим
+кускам — подключи LLM: **Settings → LLM Configuration**.
+
+| Поле | Что писать (пример — Cline-шлюз) |
+|------|----------------------------------|
+| **Provider** | `OpenAI` |
+| **Endpoint URL** | `https://api.cline.bot/api` |
+| **Model Name** | `openai/gpt-6.1-sol` |
+| **API Key** | `sk_...` |
+| **Temperature** | `0` (или 0.7) |
+| **Max Tokens** | `4096` |
+
+- **Endpoint URL** — это **Base URL** (без пути!). Attu к провайдеру `OpenAI` сам добавит
+  `/v1/chat/completions`. Т.е. получится ровно `https://api.cline.bot/api/v1/chat/completions`.
+- **Model Name** — полный id с провайдером (напр. `openai/gpt-6.1-sol`, `anthropic/claude-sonnet-5.5`).
+- Проверка: кнопка **Test** в этой форме.
+
+> ⚠️ LLM (чат) — это **не** эмбеддинги. Cline-ключ подходит **только** для чата/агента.
+> Для семантического поиска (раздел 6, Вариант 2) нужен embedding-провайдер (LM Studio/OpenAI-embeddings).
+
+После сохранения: открой коллекцию → панель **AI / Agent** → задай вопрос
+(«как Толстой описывает Бородино?») — агент берёт top-k чанков и отвечает через LLM.
+
+## 8. Остановить / удалить
 
 ```powershell
 docker compose stop        # пауза (данные сохраняются)
@@ -229,7 +301,7 @@ docker compose down -v     # удалить ВСЁ вместе с данным�
 
 ---
 
-## 8. Если что-то не так
+## 9. Если что-то не так
 
 | Симптом | Что делать |
 |---------|-----------|
@@ -240,12 +312,16 @@ docker compose down -v     # удалить ВСЁ вместе с данным�
 | `ERROR: --embedder offline требует sentence-transformers` | Используй `--embedder api` (Кейс B, OpenAI-compatible) или поставь локальную модель. |
 | `ERROR: API 401/403` при `--embedder api` | Проверь `--api-base` (должен оканчиваться на `/v1`), ключ и имя модели. |
 | `ERROR: API 404` | Неверный путь: base должен быть `https://host/v1` (скрипт добавит `/embeddings`). |
+| В Attu «No embedding providers configured» | Настрой **Settings → Embeddings → Add Provider** (для семантического поиска из UI). |
+| В Attu «Collection must be loaded to search» | Нажми **Load** у коллекции. |
+| Attu не видит LM Studio на 127.0.0.1 | Из контейнера хост — `http://host.docker.internal:1234/v1` (Base URL в настройках). |
+| LLM не отвечает / 401 | Проверь Endpoint URL (только base, без пути), ключ и Model Name. Cline: `https://api.cline.bot/api`. |
 | Torch падает на GPU (RTX 50xx) | Нужен CUDA-12.8: `pip install torch --index-url https://download.pytorch.org/whl/cu128` |
-| Не понимаю, нужна ли модель | Поиск по словам → **не нужна** (Кейс A). Поиск по смыслу → **нужна** (Кейс B, OpenAI-compatible). |
+| Не понимаю, нужна ли модель | Поиск по словам → **не нужна** (Вариант 1). Поиск по смыслу → **нужна** (Вариант 2). |
 
 ---
 
-## 9. Шпаргалка (весь путь)
+## 10. Шпаргалка (весь путь)
 
 ```powershell
 git clone https://github.com/one6way/milvus-attu-doc.git; cd milvus-attu-doc
@@ -256,7 +332,14 @@ python -m pip install -r .\scripts\requirements-vectorize.txt
 # Кейс A — БЕЗ модели (поиск по словам):
 python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\file.docx" --collection docs_ft --user root --password MilvusDemo123 --recreate --demo
 
-# Кейс B — С моделью через OpenAI-compatible (поиск по смыслу):
+# Кейс B1 — С моделью локально (LM Studio, 0 токенов):
+python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\file.docx" --collection docs_sem --user root --password MilvusDemo123 --embedder api --api-base http://127.0.0.1:1234/v1 --api-key "<ТОКЕН LM STUDIO>" --api-model text-embedding-nomic-embed-text-v1.5 --batch 64 --recreate
+
+# Кейс B2 — С моделью через внешний OpenAI-compatible:
 python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\file.docx" --collection docs_sem --user root --password MilvusDemo123 --embedder api --api-base https://<host>/v1 --api-key <key> --api-model text-embedding-3-small
 ```
 > Оба скрипта берут Milvus из `--host 127.0.0.1 --port 19530` по умолчанию (можно не указывать).
+
+Что где настраивается в Attu:
+- **Settings → Embeddings** — модель для семантического поиска (Вариант 2, из UI).
+- **Settings → LLM Configuration** — чат-модель для AI-агента (раздел 7).
