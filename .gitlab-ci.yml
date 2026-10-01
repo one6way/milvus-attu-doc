@@ -34,6 +34,15 @@ variables:
   ATTU_TAG: "v3.0.1"
   HELM_IMAGE: "alpine/helm:3.16.4"
   NAMESPACE: "milvus"
+  # Публичный адрес Attu для ДРУГИХ ПК (браузер). Появится в GitLab как ссылка
+  # на окружении и в логе verify:stack. Пустое значение = доступ только локально
+  # через kubectl port-forward (см. scripts/share-attu.ps1).
+  # Переопределяется в Settings -> CI/CD -> Variables (например, адрес туннеля).
+  ATTU_PUBLIC_URL: "http://127.0.0.1:3000"
+  # Логин Attu 3.0 (у приложения своя авторизация). Переопределяйте в
+  # Settings -> CI/CD -> Variables (Masked), значения в git — только для демо.
+  ATTU_ADMIN_USER: "admin"
+  ATTU_ADMIN_PASSWORD: "AttuDemo123!"
   # GitLab Agent for Kubernetes (см. .gitlab/agents/milvus-k8s/config.yaml)
   AGENT_PATH: "nikobellic438/milvus:milvus-k8s"
   GIT_DEPTH: "50"
@@ -187,7 +196,10 @@ deploy:attu:
     kubernetes:
       agent: nikobellic438/milvus:milvus-k8s
   script:
-    - helm upgrade --install attu chart/attu -n "$NAMESPACE" -f values/attu.yaml --set image.repository="$ATTU_REPOSITORY" --set image.tag="$ATTU_TAG" --wait --timeout 5m
+    - helm upgrade --install attu chart/attu -n "$NAMESPACE" -f values/attu.yaml
+      --set image.repository="$ATTU_REPOSITORY" --set image.tag="$ATTU_TAG"
+      --set-string admin.user="$ATTU_ADMIN_USER" --set-string admin.password="$ATTU_ADMIN_PASSWORD"
+      --wait --timeout 5m
     - kubectl -n "$NAMESPACE" get svc attu
 
 # =============================================================================
@@ -201,6 +213,7 @@ verify:stack:
   needs: ["deploy:attu"]
   environment:
     name: milvus
+    url: "$ATTU_PUBLIC_URL"
     kubernetes:
       agent: nikobellic438/milvus:milvus-k8s
   script:
@@ -210,3 +223,6 @@ verify:stack:
     - kubectl -n "$NAMESPACE" wait --for=condition=Ready pod -l app.kubernetes.io/instance=attu --timeout=300s
     - echo "== Helm releases =="; helm list -n "$NAMESPACE"
     - echo "Стенд Milvus + Attu установлен и готов"
+    - echo "Attu для браузера (в т.ч. с другого ПК) = $ATTU_PUBLIC_URL"
+    - echo "Логин Attu = $ATTU_ADMIN_USER (пароль — CI-переменная ATTU_ADMIN_PASSWORD)"
+    - echo "Ссылка также в Operate -> Environments -> milvus"

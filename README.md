@@ -13,6 +13,7 @@
 | `values/milvus.yaml` | Values Milvus 3.0: standalone, messageQueue=woodpecker, StorageClass `standard`, ClusterIP |
 | `values/attu.yaml` | Values Attu: образ `zilliz/attu:v3.0.1`, адрес Milvus `milvus:19530` |
 | `scripts/install-milvus-attu.ps1` | **Один скрипт**: ставит Milvus (официальный чарт) + Attu |
+| `scripts/share-attu.ps1` | Порт-форвард + публичный туннель: даёт ссылку на Attu для **других ПК** |
 | `scripts/vectorize_docx.py` | Векторизация `.docx` → коллекция Milvus (offline-модель или OpenAI-совместимый API) |
 | `scripts/requirements-vectorize.txt` | Зависимости Python для векторизации |
 | `.gitlab-ci.yml` | Пайплайн: lint + рендер чартов (best practice) |
@@ -162,34 +163,75 @@ kubectl -n gitlab-agent get pods
 
 ## Демо: показать «пайплайн → Milvus+Attu → векторный поиск»
 
-### Что нужно человеку, кроме доступа к GitLab CI
+### Короткий путь: «нажал кнопку в GitLab → получил адрес Attu»
 
-| Сценарий | Кто что делает | Что нужно |
-|----------|----------------|-----------|
-| **A. Демо на этом ПК** (кластер тут) | владелец кластера запускает pipeline; зрители смотрят | только **браузер** + доступ по `http://127.0.0.1:3000` (сам port-forward делает владелец). Для удалённых зрителей — открыть порт наружу ([cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) / ngrok) |
-| **B. Развернуть у СЕБЯ** | каждый ставит у себя | свой кластер k8s + **свой** GitLab Agent (токен агента нельзя переиспользовать) |
+**Нужен ли второму человеку Kubernetes, kubectl, helm? — НЕТ.**
 
-> **Важно:** наш агент `milvus-k8s` установлен **в этот локальный кластер**. Через него pipeline
-> деплоит именно сюда. Чтобы развернуть у себя — нужен **свой** агент в **своём** кластере
-> (см. раздел «GitLab Agent для deploy/verify»).
+Attu — это веб-сервер *внутри* кластера; браузер общается только с Attu, а до Milvus
+достукивается сам Attu (server-side). Поэтому человеку на другом ПК достаточно
+**браузера** и ссылки. Кластер, kubectl, helm, git — не нужны вообще.
 
-#### Для сценария B (развернуть у себя)
+Так работает потому, что ваш кластер живёт за NAT, а наружу смотрит только туннель:
+
+```
+браузер (другой ПК) ──https──> cloudflared/trycloudflare ──> ваш ПК ──> kubectl port-forward ──> pod attu ──> milvus:19530
+```
+
+**Шаг 1. Владелец кластера — один раз поднимает туннель** (оставить окно открытым):
+
+```powershell
+.\scripts\share-attu.ps1 -InstallCloudflared
+# ==> публично (для других ПК): https://<случайные-слова>.trycloudflare.com
+```
+
+Аккаунт Cloudflare и домен не нужны. Затем записать адрес в GitLab, чтобы он был
+виден всем: **Settings → CI/CD → Variables → `ATTU_PUBLIC_URL`** = эта ссылка
+(если не задать — в GitLab будет `http://127.0.0.1:3000`, т.е. только локально).
+
+**Шаг 2. Второй человек — нажимает «кнопку» и открывает Attu** (только браузер):
+
+1. GitLab → проект → **Code → Tags → New tag** → имя `deploy-v1` → *Create tag*.
+   Это и есть кнопка: тег `deploy-*` запускает пайплайн
+   (`deploy:milvus` → `deploy:attu` → `verify:stack`) на вашем кластере через агента.
+2. **Operate → Environments → milvus → Open** — GitLab откроет `ATTU_PUBLIC_URL`.
+   Тот же адрес печатается в конце лога джобы `verify:stack`
+   (`Attu для браузера (в т.ч. с другого ПК): ...`).
+3. Логин `admin` / `AttuDemo123!` → **Connect**: host `milvus`, port `19530` → тестируем.
+
+> Туннель живёт, пока открыто окно `share-attu.ps1`. Пароль для публичной ссылки
+> лучше сменить: `Settings → CI/CD → Variables` → `ATTU_ADMIN_PASSWORD` (Masked),
+> затем перезапустить пайплайн тегом.
+
+### Когда Kubernetes всё же понадобится
+
+Только если человек хочет **свой** стенд, а не пользоваться вашим:
+
+| Хочу | Что нужно |
+|------|-----------|
+| Тестировать ваш Milvus через ваш Attu | **только браузер** + ссылка |
+| Развернуть свой стенд | Docker Desktop k8s (≥4 CPU/8 GB) + helm + kubectl + **свой** GitLab Agent + **свой** `ATTU_PUBLIC_URL` |
+
+### Развернуть у СЕБЯ (свой стенд)
+
+> **Важно:** агент `milvus-k8s` установлен **в этот локальный кластер** — через него pipeline
+> деплоит именно сюда. Чтобы развернуть у себя, нужен **свой** агент в **своём** кластере
+> (токен агента переиспользовать нельзя).
 
 1. **Docker Desktop** → Settings → Kubernetes → *Enable Kubernetes*; Resources: **≥ 4 CPU, ≥ 8 GB RAM**
    (Milvus standalone + etcd + MinIO + Attu на одном узле).
 2. `kubectl`, `helm ≥ 3.14`, `git`.
-3. **Свой** агент: Settings → *CI/CD* → нет; создать агента в проекте (`Operate → Kubernetes clusters`),
-   поставить в свой кластер:
+3. **Свой** агент: создать в проекте (`Operate → Kubernetes clusters`) и поставить в свой кластер:
    ```powershell
    helm repo add gitlab https://charts.gitlab.io; helm repo update
    helm upgrade --install milvus-k8s gitlab/gitlab-agent -n gitlab-agent --create-namespace `
      --set config.token=<СВОЙ_AGENT_TOKEN> --set config.kasAddress=wss://kas.gitlab.com
    ```
-4. Указать **свой** путь агента: в `.gitlab-ci.yml` → `.deploy_base.variables.KUBE_CONTEXT`
-   и `environment.kubernetes.agent` (сейчас там `nikobellic438/milvus:milvus-k8s`).
+4. Указать **свой** путь агента: `.gitlab-ci.yml` → `.deploy_base.variables.KUBE_CONTEXT`
+   и `environment.kubernetes.agent` (сейчас `nikobellic438/milvus:milvus-k8s`).
 5. Запушить тег: `git tag deploy-v1; git push origin deploy-v1`.
+6. Дать доступ другим: `.\scripts\share-attu.ps1 -InstallCloudflared` → адрес в `ATTU_PUBLIC_URL`.
 
-### Шаги демо (сценарий A)
+### Шаги демо (кластер владельца)
 
 ```powershell
 # 1) Деплой всего стенда одной командой CI:
@@ -240,7 +282,10 @@ base URL тогда, например, `http://<IP-хоста>:11434/v1` (Ollama
 
 ```powershell
 kubectl -n milvus get pods
-kubectl -n milvus port-forward svc/attu 3000:3000
+.\scripts\share-attu.ps1 -Tunnel none     # локальная ссылка + логин
 # ожидаем: страница "Sign in - Attu" (HTTP 200)
 ```
+
+> Экономия лимита Free-плана: правки только в документации/README пушите с
+> `git push -o ci.skip` — пайплайн на них не запустится.
 
