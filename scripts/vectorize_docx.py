@@ -171,9 +171,25 @@ def make_api_embedder(base_url: str, api_key: str, model_name: str, batch_size: 
         out: List[List[float]] = []
         for i in range(0, len(texts), batch_size):
             batch = list(texts[i:i + batch_size])
-            resp = requests.post(
-                url, headers=headers, json={"model": model_name, "input": batch}, timeout=180
-            )
+            try:
+                resp = requests.post(
+                    url, headers=headers, json={"model": model_name, "input": batch}, timeout=180
+                )
+            except requests.exceptions.ConnectionError as e:
+                raise SystemExit(
+                    f"ERROR: не удалось подключиться к {url}\n"
+                    f"       Проверь --api-base (должен оканчиваться на /v1) и что сервер запущен.\n"
+                    f"       {e}"
+                )
+            except requests.exceptions.Timeout:
+                raise SystemExit(f"ERROR: таймаут запроса к {url} (модель слишком медленная?)")
+            if resp.status_code == 401 or resp.status_code == 403:
+                raise SystemExit(f"ERROR: API {resp.status_code} (неверный --api-key): {resp.text[:200]}")
+            if resp.status_code == 404:
+                raise SystemExit(
+                    f"ERROR: API 404 для {url} — неверный путь. "
+                    f"base должен быть https://host/v1 (скрипт сам добавит /embeddings)."
+                )
             if resp.status_code != 200:
                 raise SystemExit(f"ERROR: API {resp.status_code}: {resp.text[:300]}")
             data = resp.json()["data"]
