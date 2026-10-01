@@ -30,7 +30,9 @@ lint:python:
 
 lint:helm:
   stage: lint
-  image: alpine/helm:3.16.4
+  image:
+    name: alpine/helm:3.16.4
+    entrypoint: [""]   # у образа entrypoint=helm; сбрасываем, чтобы GitLab мог выполнить script
   script:
     - helm lint chart/attu
     - helm repo add milvus "$MILVUS_CHART_REPO" && helm repo update
@@ -40,7 +42,9 @@ lint:helm:
 
 validate:render:
   stage: validate
-  image: alpine/helm:3.16.4
+  image:
+    name: alpine/helm:3.16.4
+    entrypoint: [""]
   script:
     - echo "Rendering Attu chart..."
     - helm template attu chart/attu -f values/attu.yaml --set image.repository=zilliz/attu --set image.tag=v3.0.1 > /dev/null
