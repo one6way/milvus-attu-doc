@@ -9,7 +9,7 @@
 
 | Путь | Назначение |
 |------|------------|
-| `chart/attu/` | Helm-чарт Attu (наш, non-root, порт 3000) |
+| `chart/attu/` | Helm-чарт Attu 3.0 (bootstrap-админ, PVC для `/data`, порт 3000) |
 | `values/milvus.yaml` | Values Milvus 3.0: standalone, messageQueue=woodpecker, StorageClass `standard`, ClusterIP |
 | `values/attu.yaml` | Values Attu: образ `zilliz/attu:v3.0.1`, адрес Milvus `milvus:19530` |
 | `scripts/install-milvus-attu.ps1` | **Один скрипт**: ставит Milvus (официальный чарт) + Attu |
@@ -99,14 +99,14 @@ kubectl delete ns milvus
 | check | `check:artifacts` | Проверка артефактов сборки | shared |
 | validate | `prep:env` | Проверка окружения и наличия файлов | shared |
 | validate | `validate:render` | `helm template` обоих чартов | shared |
-| deploy | `deploy:milvus` | Установка Milvus | **self-hosted** |
-| deploy | `deploy:attu` | Установка Attu | **self-hosted** |
-| verify | `verify:stack` | Проверка установленного ПО | **self-hosted** |
+| deploy | `deploy:milvus` | Установка Milvus | shared + **agent** |
+| deploy | `deploy:attu` | Установка Attu | shared + **agent** |
+| verify | `verify:stack` | Проверка установленного ПО | shared + **agent** |
 
 Автоматические джобы (lint/package/check/validate) работают на shared-раннере GitLab.com
-и не требуют доступа к кластеру. Джобы `deploy:*` и `verify:stack` вынесены отдельно,
-т.к. **кластер в CI эфемерный**, а «установить Milvus → установить Attu → проверить»
-должно идти на **одном и том же** кластере — поэтому они выполняются на self-hosted раннере.
+и не требуют доступа к кластеру. Джобы `deploy:*` и `verify:stack` тоже идут на **shared**,
+но попадают в кластер через **GitLab Agent for Kubernetes**, поэтому идут на **одном и том же**
+кластере по цепочке «Milvus → Attu → проверка».
 
 ### Требование: активный раннер
 
@@ -157,3 +157,90 @@ kubectl -n gitlab-agent get pods
 ```powershell
 .\scripts\validate-all.ps1
 ```
+
+---
+
+## Демо: показать «пайплайн → Milvus+Attu → векторный поиск»
+
+### Что нужно человеку, кроме доступа к GitLab CI
+
+| Сценарий | Кто что делает | Что нужно |
+|----------|----------------|-----------|
+| **A. Демо на этом ПК** (кластер тут) | владелец кластера запускает pipeline; зрители смотрят | только **браузер** + доступ по `http://127.0.0.1:3000` (сам port-forward делает владелец). Для удалённых зрителей — открыть порт наружу ([cloudflared](https://developers.cloudflare.com/cloudflare-one/connections/connect-networks/) / ngrok) |
+| **B. Развернуть у СЕБЯ** | каждый ставит у себя | свой кластер k8s + **свой** GitLab Agent (токен агента нельзя переиспользовать) |
+
+> **Важно:** наш агент `milvus-k8s` установлен **в этот локальный кластер**. Через него pipeline
+> деплоит именно сюда. Чтобы развернуть у себя — нужен **свой** агент в **своём** кластере
+> (см. раздел «GitLab Agent для deploy/verify»).
+
+#### Для сценария B (развернуть у себя)
+
+1. **Docker Desktop** → Settings → Kubernetes → *Enable Kubernetes*; Resources: **≥ 4 CPU, ≥ 8 GB RAM**
+   (Milvus standalone + etcd + MinIO + Attu на одном узле).
+2. `kubectl`, `helm ≥ 3.14`, `git`.
+3. **Свой** агент: Settings → *CI/CD* → нет; создать агента в проекте (`Operate → Kubernetes clusters`),
+   поставить в свой кластер:
+   ```powershell
+   helm repo add gitlab https://charts.gitlab.io; helm repo update
+   helm upgrade --install milvus-k8s gitlab/gitlab-agent -n gitlab-agent --create-namespace `
+     --set config.token=<СВОЙ_AGENT_TOKEN> --set config.kasAddress=wss://kas.gitlab.com
+   ```
+4. Указать **свой** путь агента: в `.gitlab-ci.yml` → `.deploy_base.variables.KUBE_CONTEXT`
+   и `environment.kubernetes.agent` (сейчас там `nikobellic438/milvus:milvus-k8s`).
+5. Запушить тег: `git tag deploy-v1; git push origin deploy-v1`.
+
+### Шаги демо (сценарий A)
+
+```powershell
+# 1) Деплой всего стенда одной командой CI:
+git tag deploy-v3 ; git push origin deploy-v3      # deploy:milvus -> deploy:attu -> verify:stack
+
+# 2) Доступ к Attu (сервис ClusterIP):
+kubectl -n milvus port-forward svc/attu 3000:3000
+#    браузер: http://127.0.0.1:3000
+```
+
+**Логин Attu 3.0** (у приложения своя авторизация; задаётся в `values/attu.yaml` → `admin`):
+
+| Поле | Значение |
+|------|----------|
+| Username | `admin` |
+| Password | `AttuDemo123!` |
+
+> Пароль-политика Attu: 8–128 символов и минимум **3 класса** из 4 (A-Z, a-z, 0-9, спецсимволы).
+> В продакшене пароль задавайте через CI/CD variable `ATTU_ADMIN_PASSWORD` / Secret, не в git.
+
+### Что показать в Attu
+
+1. **Connect** → host `milvus` (не `localhost`!), port `19530` → *Connect*.
+2. **Databases** → создать БД `demo` (кнопка *Create Database*).
+3. **Create Collection** → например `docs`:
+   - поле `id` (Int64, primary), `text` (**TEXT**/**VarChar**), `vector` (**FloatVector**, dim = размерность модели),
+   - индекс по `vector` (тип `AUTOINDEX` или `HNSW`, метрика `COSINE`/`L2`).
+4. **Загрузить вектор** — один из вариантов:
+   - *Data → Insert*: вставить JSON-строку с полем `vector: [...]` (готовые эмбеддинги);
+   - *Data → Import*: загрузить JSON/JSONL-файл (Attu импортирует чанками);
+   - из репозитория: `scripts/vectorize_docx.py` (Word → эмбеддинги → коллекция Milvus).
+5. **Search / Query** → задать вектор или текст → увидеть `hit`.
+6. **LLM API (AI Workbench)** → настройки модели в UI: OpenAI-совместимый **base URL** + **API key**
+   (например `https://api.openai.com/v1`), затем чат-агент по данным коллекции.
+
+### Про LLM вне интернета (Ollama / LM Studio)
+
+Attu в кластере видит `localhost` **как самого себя**, поэтому локальную модель надо адресовать
+сетью хоста, а SSRF-защиту ослабить:
+
+```yaml
+# values/attu.yaml
+allowPrivateModelEndpoints: true   # -> ATTU_SSRF_ALLOW_PRIVATE=true
+```
+base URL тогда, например, `http://<IP-хоста>:11434/v1` (Ollama) — и хост должен быть доступен из пода.
+
+### Проверка работоспособности стенда
+
+```powershell
+kubectl -n milvus get pods
+kubectl -n milvus port-forward svc/attu 3000:3000
+# ожидаем: страница "Sign in - Attu" (HTTP 200)
+```
+
