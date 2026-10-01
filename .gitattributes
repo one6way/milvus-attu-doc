@@ -1,4 +1,5 @@
 # Нормализация переводов строк (Windows-разработка)
 * text=auto eol=lf
+*.docx binary
 *.png binary
 *.jpg binary

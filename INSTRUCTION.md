@@ -40,6 +40,9 @@ cd milvus-attu-doc
 ```
 > Если git нет — открой https://github.com/one6way/milvus-attu-doc → **Code → Download ZIP**, распакуй и перейди в папку.
 
+> **Тестовые документы уже в репо — папка `samples/`:** `moskva.docx`, `voina-i-mir.docx`, `file.docx`.
+> Свои документы клади туда же или указывай любой путь через `--file`.
+
 ---
 
 ## 2. Поднять Milvus + Attu
@@ -107,7 +110,7 @@ python -m pip install -r .\scripts\requirements-vectorize.txt
 
 Одной командой (создаёт коллекцию и заливает текст):
 ```powershell
-python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\moskva.docx" --collection docs_ft `
+python .\scripts\docx_to_milvus_bm25.py --file ".\samples\moskva.docx" --collection docs_ft `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 --recreate --demo
 ```
 Что произойдёт: текст нарежется на чанки → создастся коллекция `docs_ft` → вставится текст →
@@ -135,7 +138,7 @@ python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\moskva.docx" --coll
    ```
 6. Заливай **из папки репо** (проверено: 6657 чанков ≈ 48 сек):
    ```powershell
-   python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\voina-i-mir.docx" --collection voina_i_mir `
+   python .\scripts\vectorize_docx.py --file ".\samples\voina-i-mir.docx" --collection voina_i_mir `
      --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 `
      --embedder api --api-base http://127.0.0.1:1234/v1 --api-key "<ТОКЕН LM STUDIO>" `
      --api-model text-embedding-nomic-embed-text-v1.5 --batch 64 --recreate
@@ -156,7 +159,7 @@ python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\moskva.docx" --coll
 | `--api-model` | имя модели эмбеддингов | `text-embedding-3-small`, `bge-m3` |
 
 ```powershell
-python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collection docs_sem `
+python .\scripts\vectorize_docx.py --file ".\samples\moskva.docx" --collection docs_sem `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 `
   --embedder api --api-base https://<твой-хост>/v1 --api-key <ключ> --api-model text-embedding-3-small
 ```
@@ -179,7 +182,7 @@ Attu → **Settings → Embeddings** → **Add Provider** → заполни **P
 ```powershell
 python -m pip install torch --index-url https://download.pytorch.org/whl/cu128
 python -m pip install "sentence-transformers>=3.0.0"
-python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collection docs_sem `
+python .\scripts\vectorize_docx.py --file ".\samples\moskva.docx" --collection docs_sem `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123
 ```
 > Для поиска из Attu UI этот путь не подходит — там нужен HTTP-провайдер (B1/B2).
@@ -205,7 +208,7 @@ python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collectio
 
 **Из Python (проверено):**
 ```powershell
-python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\moskva.docx" --collection docs_ft `
+python .\scripts\docx_to_milvus_bm25.py --file ".\samples\moskva.docx" --collection docs_ft `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 --demo `
   --query "автоматизация развёртывания контейнеров"
 ```
@@ -360,16 +363,16 @@ attu                zilliz/attu:v3.0.1                       Up
 ```
 ## 7. Пример end-to-end: `moskva.docx` (заливка + 2 вопроса)
 
-Файл `D:\FILE_WORD\moskva.docx` (МГТУ им. Баумана, «Приоритет 2030», космические проекты)
+Файл **`.\samples\moskva.docx`** (МГТУ им. Баумана, «Приоритет 2030», космические проекты)
 даёт **12 чанков**. Заливаем **оба** варианта (команды — из папки репо):
 
 ```powershell
 # Вариант 1 — без модели (BM25):
-python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\moskva.docx" --collection moskva_ft `
+python .\scripts\docx_to_milvus_bm25.py --file ".\samples\moskva.docx" --collection moskva_ft `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 --recreate
 
 # Вариант 2 — с моделью (LM Studio):
-python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collection moskva_sem `
+python .\scripts\vectorize_docx.py --file ".\samples\moskva.docx" --collection moskva_sem `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 `
   --embedder api --api-base http://127.0.0.1:1234/v1 --api-key "<ТОКЕН LM STUDIO>" `
   --api-model text-embedding-nomic-embed-text-v1.5 --batch 64 --recreate
@@ -505,13 +508,13 @@ docker compose up -d                      # поднять;  ждать healthy 
 python -m pip install -r .\scripts\requirements-vectorize.txt
 
 # Кейс A — БЕЗ модели (поиск по словам):
-python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\moskva.docx" --collection docs_ft --user root --password MilvusDemo123 --recreate --demo
+python .\scripts\docx_to_milvus_bm25.py --file ".\samples\moskva.docx" --collection docs_ft --user root --password MilvusDemo123 --recreate --demo
 
 # Кейс B1 — С моделью локально (LM Studio, 0 токенов):
-python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collection docs_sem --user root --password MilvusDemo123 --embedder api --api-base http://127.0.0.1:1234/v1 --api-key "<ТОКЕН LM STUDIO>" --api-model text-embedding-nomic-embed-text-v1.5 --batch 64 --recreate
+python .\scripts\vectorize_docx.py --file ".\samples\moskva.docx" --collection docs_sem --user root --password MilvusDemo123 --embedder api --api-base http://127.0.0.1:1234/v1 --api-key "<ТОКЕН LM STUDIO>" --api-model text-embedding-nomic-embed-text-v1.5 --batch 64 --recreate
 
 # Кейс B2 — С моделью через внешний OpenAI-compatible:
-python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collection docs_sem --user root --password MilvusDemo123 --embedder api --api-base https://<host>/v1 --api-key <key> --api-model text-embedding-3-small
+python .\scripts\vectorize_docx.py --file ".\samples\moskva.docx" --collection docs_sem --user root --password MilvusDemo123 --embedder api --api-base https://<host>/v1 --api-key <key> --api-model text-embedding-3-small
 
 # Обратная выгрузка (Milvus -> файл):
 python .\scripts\milvus_export.py --collection docs_sem --out moskva_back.docx --format docx --user root --password MilvusDemo123

@@ -32,6 +32,9 @@ docker compose ps             # ждать healthy у milvus-standalone (~1-2 м
 | `scripts/docx_to_jsonl.py` | `.docx` → JSONL (для ручного Import в Attu) |
 | `scripts/milvus_export.py` | Обратная выгрузка: коллекция Milvus → `.txt` / `.docx` / `.jsonl` |
 | `scripts/requirements-vectorize.txt` | Python-зависимости скриптов |
+| `samples/moskva.docx` | Тестовый документ (МГТУ/«Приоритет 2030») для примеров из инструкции |
+| `samples/voina-i-mir.docx` | Большой тестовый документ («Война и мир») |
+| `samples/file.docx` | Минимальный тестовый `.docx` |
 | `INSTRUCTION.md` | Полная инструкция для новичка |
 
 ## Два способа поиска
@@ -45,11 +48,11 @@ docker compose ps             # ждать healthy у milvus-standalone (~1-2 м
 python -m pip install -r .\scripts\requirements-vectorize.txt
 
 # 1) без модели — поиск по словам
-python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\moskva.docx" --collection moskva_ft `
+python .\scripts\docx_to_milvus_bm25.py --file ".\samples\moskva.docx" --collection moskva_ft `
   --user root --password MilvusDemo123 --recreate
 
 # 2) с моделью — поиск по смыслу (пример: LM Studio локально, 0 токенов)
-python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collection moskva_sem `
+python .\scripts\vectorize_docx.py --file ".\samples\moskva.docx" --collection moskva_sem `
   --user root --password MilvusDemo123 --embedder api `
   --api-base http://127.0.0.1:1234/v1 --api-key "<ТОКЕН LM STUDIO>" `
   --api-model text-embedding-nomic-embed-text-v1.5 --batch 64 --recreate
