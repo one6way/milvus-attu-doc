@@ -14,6 +14,7 @@
 | `values/attu.yaml` | Values Attu: образ `zilliz/attu:v3.0.1`, адрес Milvus `milvus:19530` |
 | `scripts/install-milvus-attu.ps1` | **Один скрипт**: ставит Milvus (официальный чарт) + Attu |
 | `scripts/share-attu.ps1` | Порт-форвард + публичный туннель: даёт ссылку на Attu для **других ПК** |
+| `scripts/share-milvus.ps1` | Порт-форвард + TCP-туннель: доступ к Milvus для **pymilvus/SDK** с других ПК |
 | `scripts/vectorize_docx.py` | Векторизация `.docx` → коллекция Milvus (offline-модель или OpenAI-совместимый API) |
 | `scripts/requirements-vectorize.txt` | Зависимости Python для векторизации |
 | `.gitlab-ci.yml` | Пайплайн: lint + рендер чартов (best practice) |
@@ -177,6 +178,10 @@ Attu — это веб-сервер *внутри* кластера; брауз�
 браузер (другой ПК) ──https──> cloudflared/trycloudflare ──> ваш ПК ──> kubectl port-forward ──> pod attu ──> milvus:19530
 ```
 
+> Скрипты `share-attu.ps1` / `share-milvus.ps1` запускаются **только на ПК владельца
+> кластера** — им нужен `kubectl` и доступ к кластеру. Другой человек их не запускает:
+> он просто открывает ссылку (Attu) или подключается по выданному адресу (pymilvus).
+
 **Шаг 1. Владелец кластера — один раз поднимает туннель** (оставить окно открытым):
 
 ```powershell
@@ -209,6 +214,7 @@ Attu — это веб-сервер *внутри* кластера; брауз�
 | Хочу | Что нужно |
 |------|-----------|
 | Тестировать ваш Milvus через ваш Attu | **только браузер** + ссылка |
+| Работать с вашим Milvus через pymilvus | `pip install pymilvus` + адрес из `share-milvus.ps1` (кластер не нужен) |
 | Развернуть свой стенд | Docker Desktop k8s (≥4 CPU/8 GB) + helm + kubectl + **свой** GitLab Agent + **свой** `ATTU_PUBLIC_URL` |
 
 ### Развернуть у СЕБЯ (свой стенд)
@@ -254,7 +260,8 @@ kubectl -n milvus port-forward svc/attu 3000:3000
 
 ### Что показать в Attu
 
-1. **Connect** → host `milvus` (не `localhost`!), port `19530` → *Connect*.
+1. **Connect** → host `milvus` (не `localhost`!), port `19530`,
+   **User** `root`, **Password** `MilvusDemo123` (см. ниже про авторизацию) → *Connect*.
 2. **Databases** → создать БД `demo` (кнопка *Create Database*).
 3. **Create Collection** → например `docs`:
    - поле `id` (Int64, primary), `text` (**TEXT**/**VarChar**), `vector` (**FloatVector**, dim = размерность модели),
@@ -266,6 +273,71 @@ kubectl -n milvus port-forward svc/attu 3000:3000
 5. **Search / Query** → задать вектор или текст → увидеть `hit`.
 6. **LLM API (AI Workbench)** → настройки модели в UI: OpenAI-совместимый **base URL** + **API key**
    (например `https://api.openai.com/v1`), затем чат-агент по данным коллекции.
+
+### Авторизация Milvus (обязательна перед публикацией порта)
+
+В `values/milvus.yaml` включена авторизация — иначе любой, кто дошёл до 19530, может
+читать/писать/удалять коллекции:
+
+```yaml
+extraConfigFiles:
+  user.yaml: |+
+    common:
+      security:
+        authorizationEnabled: true
+        defaultRootPassword: MilvusDemo123
+```
+
+| Кто | Логин | Пароль |
+|-----|-------|--------|
+| Milvus (root) | `root` | `MilvusDemo123` |
+| Attu (само приложение) | `admin` | `AttuDemo123!` |
+
+> `defaultRootPassword` применяется **только при первой инициализации**. На уже
+> работающем Milvus пароль root так не сменить — используйте
+> `MilvusClient.update_password(...)` (см. пример ниже).
+
+### Работа с Milvus напрямую (pymilvus / SDK) с другого ПК
+
+Attu в браузере — это UI. Если человеку нужен **pymilvus**, он ходит на gRPC-порт
+Milvus (19530) напрямую, поэтому нужен **отдельный** туннель именно к Milvus
+(туннель Attu публикует только 3000):
+
+```powershell
+# на ПК владельца кластера:
+.\scripts\share-milvus.ps1 -Tunnel ngrok -InstallNgrok
+# выведет host/port и готовый сниппет:
+#   c = MilvusClient(uri="http://<host>:<port>", token="root:MilvusDemo123")
+```
+
+На ПК клиента (нужен только `pip install pymilvus`):
+
+```python
+from pymilvus import MilvusClient
+c = MilvusClient(uri="http://<host>:<port>", token="root:MilvusDemo123")
+c.create_collection("demo", dimension=4)
+c.insert("demo", [{"id": 1, "vector": [0.1, 0.2, 0.3, 0.4]}])
+c.flush("demo")
+print(c.search("demo", [[0.1, 0.2, 0.3, 0.4]], limit=1))
+```
+
+Векторизация Word-документа в ту же коллекцию (`--user`/`--password`):
+
+```powershell
+kubectl -n milvus port-forward svc/milvus 19530:19530   # или адрес туннеля
+python scripts/vectorize_docx.py doc.docx --host <host> --port <port> --user root --password MilvusDemo123
+```
+
+Смена пароля root (работает и на уже развёрнутом Milvus):
+
+```python
+from pymilvus import MilvusClient
+c = MilvusClient(uri="http://127.0.0.1:19530", token="root:Milvus")
+c.update_password(user_name="root", old_password="Milvus", new_password="MilvusDemo123")
+```
+
+Проверено на этом стенде: без токена подключение отклоняется, с токеном
+`root:MilvusDemo123` проходит полный цикл (create → insert → flush → search → drop).
 
 ### Про LLM вне интернета (Ollama / LM Studio)
 

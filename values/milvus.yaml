@@ -59,3 +59,22 @@ minio:
 service:
   type: ClusterIP
   port: 19530
+
+# Авторизация Milvus — ОБЯЗАТЕЛЬНА, если порт 19530 открывается наружу
+# (туннель, NodePort). Без неё любой, кто дошёл до 19530, может читать,
+# писать и удалять коллекции.
+#
+# Применяется при следующем деплое (тег deploy-*):
+#   helm upgrade milvus ... -f values/milvus.yaml
+# После включения пароль передаётся так:
+#   pymilvus: MilvusClient(uri="http://host:19530", token="root:<пароль>")
+#   Attu:     Connect -> host/port + User=root, Password=<пароль>
+#
+# defaultRootPassword действует при первой инициализации; максимум 72 символа.
+# Значение ниже — демонстрационное, для продакшена задавайте через Secret.
+extraConfigFiles:
+  user.yaml: |+
+    common:
+      security:
+        authorizationEnabled: true
+        defaultRootPassword: MilvusDemo123
