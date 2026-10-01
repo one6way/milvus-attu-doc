@@ -1,0 +1,7 @@
+1. Tunnel release: {{ .Release.Name }} in namespace {{ .Release.Namespace }}.
+2. Проксирует {{ .Values.targetUrl }} наружу через {{ .Values.ssh.host }} (SSH reverse-tunnel).
+3. Публичный HTTPS-URL печатается в логе пода:
+   kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "tunnel.fullname" . }}
+   (ищите строку вида https://<random>.lhr.life)
+4. URL одноразовый: при перезапуске пода он меняется. CI читает свежий URL
+   и публикует его как ссылку окружения (см. .gitlab-ci.yml -> deploy:tunnel).

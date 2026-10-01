@@ -56,7 +56,7 @@ lint:yamllint:
   image: python:3.11-slim
   script:
     - pip install --quiet yamllint
-    - yamllint -c .yamllint .gitlab-ci.yml values/
+    - yamllint -c .yamllint .gitlab-ci.yml values/ docker-compose.yml docker/milvus-user.yaml
 
 lint:powershell:
   stage: lint

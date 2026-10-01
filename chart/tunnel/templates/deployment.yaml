@@ -1,0 +1,34 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "tunnel.fullname" . }}
+  labels:
+    {{- include "tunnel.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "tunnel.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "tunnel.selectorLabels" . | nindent 8 }}
+    spec:
+      containers:
+        - name: tunnel
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # SSH-клиент докачивается в рантайме (образ без сборки).
+          # Если туннель оборвётся — ssh выйдет, и k8s перезапустит контейнер.
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              apk add --no-cache openssh-client >/dev/null 2>&1
+              echo "Открываю SSH reverse-tunnel :{{ .Values.localPort }} -> {{ .Values.targetUrl }} через {{ .Values.ssh.host }}"
+              exec ssh {{ .Values.ssh.options }} -R {{ .Values.localPort }}:{{ .Values.targetUrl }} {{ .Values.ssh.host }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}

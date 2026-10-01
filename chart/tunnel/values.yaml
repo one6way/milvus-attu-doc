@@ -1,0 +1,35 @@
+# Публичный туннель к Attu.
+#
+# ВАЖНО: используем SSH reverse-tunnel (localhost.run), а НЕ cloudflared:
+# Cloudflare Tunnel неработоспособен в РФ — ISPs троттлят трафик Cloudflare
+# до ~16 КБ/соединение, регистрация туннеля на edge обрывается
+# (cloudflare/cloudflared#1456). SSH-туннель этой проблемы не имеет.
+
+# Цель внутри кластера: сервис Attu и его порт.
+targetUrl: "attu:3000"
+
+# Порт на стороне провайдера, куда публикуется трафик.
+# Для localhost.run: 80 (публикуется как HTTPS на <random>.lhr.life).
+localPort: 80
+
+ssh:
+  # Бесплатный публичный туннель без аккаунта. Альтернатива: serveo.net
+  host: "nokey@localhost.run"
+  options: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ServerAliveInterval=30 -o ExitOnForwardFailure=yes"
+
+image:
+  repository: alpine
+  tag: "3.20"
+  pullPolicy: IfNotPresent
+
+replicaCount: 1
+
+nameOverride: ""
+fullnameOverride: ""
+
+resources:
+  requests:
+    cpu: 10m
+    memory: 32Mi
+  limits:
+    memory: 128Mi

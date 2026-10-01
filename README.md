@@ -1,14 +1,22 @@
 # Milvus + Attu (Kubernetes)
 
-Минимальный репозиторий для развёртывания **Milvus 3.0** и **Attu 3.0** в Kubernetes
-(`docker-desktop`, kind, любой кластер) и для загрузки в Milvus текста из документов Word.
+Минимальный репозиторий для развёртывания **Milvus 3.0** и **Attu 3.0** — в Kubernetes
+(`docker-desktop`, kind, любой кластер) **или без Kubernetes, просто через Docker Compose** —
+и для загрузки в Milvus текста из документов Word.
 
 Состав — **только необходимое**: нет образов, дампов, бэкапов и сторонних проектов.
+
+> Два способа запуска:
+> 1. **Kubernetes + Helm** — раздел «Установка (одна команда)» ниже;
+> 2. **Только Docker Desktop, без Kubernetes** — раздел
+>    [«Локальный запуск без Kubernetes»](#локальный-запуск-без-kubernetes-только-docker-desktop).
 
 ## Что внутри
 
 | Путь | Назначение |
 |------|------------|
+| `docker-compose.yml` | **Без K8s**: Milvus 3.0 + Attu 3.0 через Docker Desktop (одна команда) |
+| `docker/milvus-user.yaml` | Override-конфиг Milvus для compose: авторизация root + `mq.type=woodpecker` |
 | `chart/attu/` | Helm-чарт Attu 3.0 (bootstrap-админ, PVC для `/data`, порт 3000) |
 | `values/milvus.yaml` | Values Milvus 3.0: standalone, messageQueue=woodpecker, StorageClass `standard`, ClusterIP |
 | `values/attu.yaml` | Values Attu: образ `zilliz/attu:v3.0.1`, адрес Milvus `milvus:19530` |
@@ -87,13 +95,81 @@ helm uninstall attu milvus -n milvus
 kubectl delete ns milvus
 ```
 
+---
+
+## Локальный запуск без Kubernetes (только Docker Desktop)
+
+Если Kubernetes не нужен, **Milvus 3.0 + Attu 3.0** поднимаются обычным `docker compose`.
+Требуется только **Docker Desktop для Windows** (Linux-контейнеры) и интернет на первый
+`pull` образов. `kubectl` и `helm` **не нужны**.
+
+### Запуск
+
+```powershell
+# из корня репозитория
+docker compose up -d      # etcd + MinIO + Milvus + Attu
+docker compose ps         # дождаться healthy у контейнера milvus-standalone
+```
+
+Первый запуск долгий: скачивается образ Milvus (~0.9 ГБ), затем Milvus инициализируется
+~1–2 минуты (в healthcheck задан `start_period: 90s`). Готовность можно смотреть так:
+
+```powershell
+docker compose logs -f milvus
+```
+
+### Доступ
+
+| Что | Адрес |
+|-----|-------|
+| Attu (веб-UI) | http://127.0.0.1:13000 |
+| Milvus (gRPC/SDK) | `127.0.0.1:19530` |
+| MinIO console (опционально) | http://127.0.0.1:9001 |
+
+1. Открыть http://127.0.0.1:13000 → вход **`admin` / `AttuDemo123!`** (аккаунт Attu
+   создаётся автоматически при первом старте).
+2. В форме **Connect**: host **`milvus`** (не `127.0.0.1`!), port `19530`,
+   **User** `root`, **Password** `MilvusDemo123`.
+
+### Проверка из Python (pymilvus)
+
+```powershell
+python -m pip install -r .\scripts\requirements-vectorize.txt
+python .\scripts\vectorize_docx.py --file "C:\docs\doc.docx" --collection my_docs `
+  --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123
+```
+
+### Управление и данные
+
+```powershell
+docker compose stop          # остановить (данные в volumes сохраняются)
+docker compose down          # удалить контейнеры (volumes остаются)
+docker compose down -v       # удалить контейнеры И данные (volumes) — чистая установка
+```
+
+### Что настроено
+
+| Файл | Роль |
+|------|------|
+| `docker-compose.yml` | etcd + MinIO + `milvusdb/milvus:v3.0.1` + `zilliz/attu:v3.0.1` |
+| `docker/milvus-user.yaml` | Override-конфиг Milvus: `common.security.authorizationEnabled=true`, `defaultRootPassword=MilvusDemo123`, `mq.type=woodpecker` |
+
+Значения согласованы с Kubernetes-профилем (`values/milvus.yaml`, `values/attu.yaml`),
+но пароли здесь — **демонстрационные**. Перед публикацией портов наружу смените
+`defaultRootPassword` и пароль Attu.
+
+### Если порт занят
+
+Поменяйте **левую** часть в `ports` (например, `"13000:3000"` → `"14000:3000"`).
+`MILVUS_ADDRESS: milvus:19530` менять не нужно — это имя сервиса внутри docker-сети.
+
 ## CI/CD (GitLab)
 
 `.gitlab-ci.yml` — стадии и джобы:
 
 | Стадия | Джоб | Что делает | Раннер |
 |--------|------|-----------|--------|
-| lint | `lint:yamllint` | Проверка YAML (`.gitlab-ci.yml`, `values/`) | shared |
+| lint | `lint:yamllint` | Проверка YAML (`.gitlab-ci.yml`, `values/`, `docker-compose.yml`, `docker/`) | shared |
 | lint | `lint:powershell` | Синтаксис PowerShell | shared |
 | lint | `lint:python` | Компиляция Python | shared |
 | lint | `lint:helm` | `helm lint` обоих чартов | shared |
