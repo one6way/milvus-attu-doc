@@ -6,6 +6,9 @@
 
 Состав — **только необходимое**: нет образов, дампов, бэкапов и сторонних проектов.
 
+> **Новичок? Есть пошаговая инструкция «для чайника» → [INSTRUCTION.md](INSTRUCTION.md)**
+> (поднять, зайти в Attu, залить Word, поиск без модели и с моделью).
+>
 > Два способа запуска:
 > 1. **Kubernetes + Helm** — раздел «Установка (одна команда)» ниже;
 > 2. **Только Docker Desktop, без Kubernetes** — раздел
@@ -25,6 +28,8 @@
 | `scripts/share-milvus.ps1` | Порт-форвард + TCP-туннель: доступ к Milvus для **pymilvus/SDK** с других ПК |
 | `scripts/vectorize_docx.py` | Векторизация `.docx` → коллекция Milvus (offline-модель или OpenAI-совместимый API) |
 | `scripts/docx_to_jsonl.py` | `.docx` → JSONL для ручного импорта в Attu (без модели, под BM25 full-text) |
+| `scripts/docx_to_milvus_bm25.py` | `.docx` → коллекция Milvus BM25 (full-text, без модели) одной командой |
+| `INSTRUCTION.md` | Пошаговая инструкция для новичка: поднять, залить Word, искать |
 | `scripts/requirements-vectorize.txt` | Зависимости Python для векторизации |
 | `.gitlab-ci.yml` | Пайплайн: lint + рендер чартов (best practice) |
 
