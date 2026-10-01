@@ -24,6 +24,7 @@
 | `scripts/share-attu.ps1` | Порт-форвард + публичный туннель: даёт ссылку на Attu для **других ПК** |
 | `scripts/share-milvus.ps1` | Порт-форвард + TCP-туннель: доступ к Milvus для **pymilvus/SDK** с других ПК |
 | `scripts/vectorize_docx.py` | Векторизация `.docx` → коллекция Milvus (offline-модель или OpenAI-совместимый API) |
+| `scripts/docx_to_jsonl.py` | `.docx` → JSONL для ручного импорта в Attu (без модели, под BM25 full-text) |
 | `scripts/requirements-vectorize.txt` | Зависимости Python для векторизации |
 | `.gitlab-ci.yml` | Пайплайн: lint + рендер чартов (best practice) |
 
@@ -167,6 +168,69 @@ docker compose down -v       # удалить контейнеры И данны
 
 Поменяйте **левую** часть в `ports` (например, `"13000:3000"` → `"14000:3000"`).
 `MILVUS_ADDRESS: milvus:19530` менять не нужно — это имя сервиса внутри docker-сети.
+
+---
+
+## Поиск по документам: full-text (без модели) и семантический (с моделью)
+
+Milvus 3.0 умеет **два разных** поиска. Выбор влияет на то, нужна ли эмбеддинг-модель.
+
+| Способ | Модель нужна? | Что ищет |
+|--------|---------------|----------|
+| **Full-text (BM25)** | ❌ нет | по ключевым словам (совпадение слов) |
+| **Семантический (векторный)** | ✅ да | по смыслу/синонимам |
+
+### A. Ручной full-text (BM25) в Attu — без модели
+
+1. Открыть http://127.0.0.1:13000, войти `admin` / `AttuDemo123!`, **Connect**
+   (`milvus` / `19530` / `root` / `MilvusDemo123` — дефолтное соединение уже с кредами).
+2. **Create Collection**, задать поля:
+   | Поле | Тип | Опции |
+   |------|-----|-------|
+   | `id` | Int64 | Primary, **Auto ID** |
+   | `text` | VarChar | max_length `8192`, **Enable Analyzer** ✅ |
+   | `source` | VarChar | max_length `256` |
+   | `chunk_index` | Int64 | |
+   | `sparse` | **SparseFloatVector** | |
+3. **Add Function**: имя `bm25_fn`, тип **BM25**, input field `text`, output field `sparse`.
+4. **Index** по полю `sparse`: тип **SPARSE_INVERTED_INDEX**, метрика **BM25**. Создать.
+5. **Load** коллекцию.
+6. Подготовить JSONL (без модели — только текст):
+   ```powershell
+   python .\scripts\docx_to_jsonl.py --file "D:\FILE_WORD\file.docx" --out file.jsonl
+   ```
+   Формат строки (НЕ включать `id` — он auto, и `sparse` — его делает функция BM25):
+   ```json
+   {"text": "текст чанка", "source": "file.docx", "chunk_index": 0}
+   ```
+7. В коллекции → **Import Data** → выбрать `file.jsonl` (Attu принимает `.json/.jsonl/.parquet`).
+8. **Search** → режим **full-text/BM25** → ввести запрос словами → Run.
+
+### B. Семантический поиск (по смыслу) — нужна модель
+
+Векторы считаются заранее одним из способов (модель может быть локальной или внешней):
+
+- **Локально (офлайн, 0 токенов):** `pip install torch --index-url https://download.pytorch.org/whl/cu128` +
+  `pip install "sentence-transformers>=3.0.0"`, затем:
+  ```powershell
+  python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\file.docx" --collection k8s_docs ^
+    --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123
+  ```
+- **Через OpenAI-совместимый endpoint:**
+  ```powershell
+  python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\file.docx" --collection k8s_docs ^
+    --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 ^
+    --embedder api --api-base https://<host>/v1 --api-key <key> --api-model <model>
+  ```
+- **Серверно (Milvus вызывает провайдера сам):** у функции Milvus есть тип **TextEmbedding** —
+  можно описать эмбеддинг прямо в схеме коллекции, тогда Milvus будет звать
+  OpenAI-совместимый endpoint при вставке/поиске.
+
+Чтобы AI-поиск в Attu работал с этим данными, модель в **Settings → Embeddings**
+(OpenAI-совместимый `baseUrl` + `/v1/embeddings`) должна совпадать с той, что строила векторы.
+
+> Можно совместить: в одной коллекции держать `text` (BM25, `sparse`) и `vector`
+> (эмбеддинги) — тогда доступен и keyword-, и смысловой поиск.
 
 ## CI/CD (GitLab)
 
