@@ -128,8 +128,13 @@ docker compose logs -f milvus
 
 1. Открыть http://127.0.0.1:13000 → вход **`admin` / `AttuDemo123!`** (аккаунт Attu
    создаётся автоматически при первом старте).
-2. В форме **Connect**: host **`milvus`** (не `127.0.0.1`!), port `19530`,
-   **User** `root`, **Password** `MilvusDemo123`.
+2. Дефолтное соединение `milvus:19530/default` создаётся автоматически **с кредами**
+   **`root` / `MilvusDemo123`** (берутся из `MILVUS_USERNAME` / `MILVUS_PASSWORD`) —
+   достаточно нажать **Connect**.
+
+> Если добавляете соединение вручную: host **`milvus`** (не `127.0.0.1`!), port `19530`,
+> User `root`, Password `MilvusDemo123`. Ошибка `UNAUTHENTICATED: missing authorization`
+> означает, что не заданы логин/пароль (у Milvus включена авторизация).
 
 ### Проверка из Python (pymilvus)
 
@@ -151,7 +156,7 @@ docker compose down -v       # удалить контейнеры И данны
 
 | Файл | Роль |
 |------|------|
-| `docker-compose.yml` | etcd + MinIO + `milvusdb/milvus:v3.0.1` + `zilliz/attu:v3.0.1` |
+| `docker-compose.yml` | etcd + MinIO + `milvusdb/milvus:v3.0.1` + `zilliz/attu:v3.0.1` (дефолтное соединение Attu с кредами root) |
 | `docker/milvus-user.yaml` | Override-конфиг Milvus: `common.security.authorizationEnabled=true`, `defaultRootPassword=MilvusDemo123`, `mq.type=woodpecker` |
 
 Значения согласованы с Kubernetes-профилем (`values/milvus.yaml`, `values/attu.yaml`),

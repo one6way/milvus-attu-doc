@@ -85,6 +85,11 @@ services:
     environment:
       # Имя сервиса внутри docker-сети (НЕ 127.0.0.1 — UI ходит в Milvus изнутри контейнера).
       MILVUS_ADDRESS: milvus:19530
+      # Креды, которые Attu подставит в дефолтное соединение при первом старте.
+      # Без них (при включённой авторизации Milvus) UI покажет
+      # "UNAUTHENTICATED: missing authorization".
+      MILVUS_USERNAME: root
+      MILVUS_PASSWORD: MilvusDemo123
       # Первичный администратор Attu (создаётся при первом старте).
       ATTU_ADMIN_USER: admin
       ATTU_ADMIN_PASSWORD: AttuDemo123!
