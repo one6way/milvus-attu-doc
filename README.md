@@ -87,9 +87,3 @@ docker compose down -v     # удалить всё вместе с данным�
 Пароли в репозитории **демонстрационные** (`MilvusDemo123`, `AttuDemo123!`) и лежат в git.
 Перед публикацией портов наружу смените `defaultRootPassword` в `docker/milvus-user.yaml`
 и `ATTU_ADMIN_PASSWORD` в `docker-compose.yml`.
-
-## Legacy (Kubernetes/Helm — не требуется)
-
-В репозитории остались файлы для K8s-варианта (`chart/`, `values/`,
-`scripts/install-milvus-attu.ps1`, `scripts/share-*.ps1`). Для запуска через Docker Desktop
-они **не нужны**.

@@ -1,5 +1,4 @@
-# Нормализация переводов строк (Windows-разработка + Linux-CI)
+# Нормализация переводов строк (Windows-разработка)
 * text=auto eol=lf
-*.ps1 text eol=crlf
 *.png binary
 *.jpg binary
