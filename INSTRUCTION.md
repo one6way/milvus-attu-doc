@@ -266,6 +266,98 @@ for h in c.search("docs_sem", data=[qvec], anns_field="vector", limit=3, output_
 
 ---
 
+## 6a. Эталонные экраны (как должно выглядеть)
+
+Текстовые «скриншоты» — сверься, если что-то не так.
+
+**1. Attu: форма Connect**
+```
+┌ Connection ─────────────────────────────┐
+│ Address  [ milvus:19530            ]    │
+│ Database [ default                 ]    │
+│ User     [ root                    ]    │
+│ Password [ MilvusDemo123           ]    │
+│                        [  Connect  ]    │
+└─────────────────────────────────────────┘
+```
+Кнопка Connect ведёт на список коллекций. Если справа вверху «Connection Unavailable» —
+неверный host/пароль.
+
+**2. Attu: список коллекций**
+```
+Databases ▾ default
+  Collections
+   • docs_ft        (BM25, по словам)
+   • moskva_ft      (BM25, по словам)
+   • moskva_sem     (Vector, по смыслу)
+   • voina_i_mir    (Vector, по смыслу)
+```
+Если у коллекции пометка **Not Loaded** — нажми **Load** (иначе поиск не работает).
+
+**3. Attu: Search, режим Full-Text (по словам)**
+```
+[ Vector Search ]                 [ + Add a search request ]
+  Type        ▾ Full-Text        (варианты: Vector | Full-Text | MinHash)
+  Text Field  ▾ text
+  Search Text [ Приоритет 2030             ]
+  Metric      ▾ BM25
+                              [   Search   ]
+──────────────────────────────────────────
+ Results:  chunk=1  score=2.742  «…ПРИОРИТЕТ 2030…»
+```
+
+**4. Attu: Search, режим Vector + Similarity Text (по смыслу)**
+```
+[ Vector Search ]                 [ + Add a search request ]
+  Type          ▾ Vector
+  Vector Field  ▾ vector
+  ◉ Similarity Text     ○ Query Vector (ручной)
+  Similarity Text [ куда отправляют спутники ]  ← Attu сам считает вектор
+  Metric        ▾ COSINE
+                              [   Search   ]
+──────────────────────────────────────────
+ Results:  chunk=11 dist=0.776  «…Космический кабель…»
+```
+Если поле Similarity Text серое / «No embedding providers configured» →
+не настроен **Settings → Embeddings**.
+
+**5. Attu: Settings → Embeddings → Add Provider**
+```
+Provider   ▾ OpenAI | Custom
+Base URL   [ http://host.docker.internal:1234/v1 ]
+API Key    [ sk-lm-...                            ]
+Model Name [ text-embedding-nomic-embed-text-v1.5 ]
+Dimension  [ 768 ]         [ Test ]  [ Save ]
+```
+
+**6. Attu: Settings → LLM Configuration (чат-агент)**
+```
+Provider      ▾ OpenAI
+Endpoint URL  [ https://api.cline.bot/api ]   ← только base, без /v1/chat/completions
+Model Name    [ openai/gpt-6.1-sol        ]
+API Key       [ sk_...                    ]
+Temperature   [ 0.7 ]
+Max Tokens    [ 4096 ]
+                    [ Test ]  [ Save ]
+```
+
+**7. Attu: Export Data (выгрузка)**
+```
+┌ Export "moskva_sem" ────────────────────┐
+│ Save to  [ D:\back\moskva.jsonl  Browse]│
+│ Format   ▾ JSONL | Parquet              │
+│ Filter   [ chunk_index < 5  (опц.)   ]   │
+│                    [  Start Export  ]    │
+└─────────────────────────────────────────┘
+```
+
+**8. Docker Desktop: контейнеры**
+```
+milvus-standalone   milvusdb/milvus:v3.0.1                    healthy
+milvus-etcd         quay.io/coreos/etcd:v3.5.25               healthy
+milvus-minio        milvusdb/minio:RELEASE.2024-12-18...      healthy
+attu                zilliz/attu:v3.0.1                       Up
+```
 ## 7. Пример end-to-end: `moskva.docx` (заливка + 2 вопроса)
 
 Файл `D:\FILE_WORD\moskva.docx` (МГТУ им. Баумана, «Приоритет 2030», космические проекты)
@@ -318,7 +410,11 @@ python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collectio
 ## 8. Обратная выгрузка: Milvus → файл («развекторизация»)
 
 Milvus хранит **исходный текст** чанков (поле `text` или `content`), поэтому данные можно вернуть
-в файл. «Отменить» эмбеддинги в вектор нельзя, но текст — да.
+в файл. «Отменить» эмбеддинги нельзя (вектор в текст не раскручивается), но текст — да.
+
+> ⚠️ **Полностью «как было» не восстановится.** Word теряет вёрстку: картинки, стили, таблицы,
+> колонтитулы, сноски. Получишь **плоский текст** чанков в правильном порядке (`chunk_index`),
+> с потерей форматирования. Для RAG/поиска это ок, как «бэкап документа» — нет.
 
 ### A. Скрипт (txt / docx / jsonl)
 
