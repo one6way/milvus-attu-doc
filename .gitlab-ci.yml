@@ -19,7 +19,7 @@ lint:powershell:
   stage: lint
   image: mcr.microsoft.com/powershell:7.4-ubuntu-22.04
   script:
-    - pwsh -NoProfile -Command "Get-ChildItem scripts -Filter *.ps1 | ForEach-Object { $t=$null;$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$t,[ref]$e); if ($e) { Write-Error \"PS syntax error in $($_.Name): $($e[0].Message)\" } }; Write-Host 'PowerShell syntax OK'"
+    - pwsh -NoProfile -File scripts/ci-lint-powershell.ps1
 
 lint:python:
   stage: lint
