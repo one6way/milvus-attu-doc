@@ -133,8 +133,16 @@ kubectl delete ns milvus
    ```
 3. Джобы используют контекст агента (`environment.kubernetes.agent` + `KUBE_CONTEXT`).
 
-Запуск установки: **Run pipeline** → переменная **`DEPLOY=true`**.
-Обычный push деплой не трогает (`rules: if $DEPLOY == "true"`), поэтому пайплайн остаётся зелёным.
+Запуск установки (любой способ):
+- **Тег** с префиксом `deploy-` (best practice для релизов):
+  ```powershell
+  git tag deploy-v1
+  git push origin deploy-v1
+  ```
+- или в UI: **Run pipeline** → переменная **`DEPLOY=true`**.
+
+Обычный push деплой не трогает (`rules` срабатывают только на тег `deploy-*`
+или переменную `DEPLOY=true`), поэтому пайплайн остаётся зелёным.
 
 Обновить/переустановить агента:
 ```powershell
