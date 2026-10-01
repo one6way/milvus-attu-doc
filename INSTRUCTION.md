@@ -107,7 +107,7 @@ python -m pip install -r .\scripts\requirements-vectorize.txt
 
 Одной командой (создаёт коллекцию и заливает текст):
 ```powershell
-python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\file.docx" --collection docs_ft `
+python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\moskva.docx" --collection docs_ft `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 --recreate --demo
 ```
 Что произойдёт: текст нарежется на чанки → создастся коллекция `docs_ft` → вставится текст →
@@ -156,7 +156,7 @@ python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\file.docx" --collec
 | `--api-model` | имя модели эмбеддингов | `text-embedding-3-small`, `bge-m3` |
 
 ```powershell
-python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\file.docx" --collection docs_sem `
+python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collection docs_sem `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 `
   --embedder api --api-base https://<твой-хост>/v1 --api-key <ключ> --api-model text-embedding-3-small
 ```
@@ -179,7 +179,7 @@ Attu → **Settings → Embeddings** → **Add Provider** → заполни **P
 ```powershell
 python -m pip install torch --index-url https://download.pytorch.org/whl/cu128
 python -m pip install "sentence-transformers>=3.0.0"
-python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\file.docx" --collection docs_sem `
+python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collection docs_sem `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123
 ```
 > Для поиска из Attu UI этот путь не подходит — там нужен HTTP-провайдер (B1/B2).
@@ -205,7 +205,7 @@ python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\file.docx" --collection 
 
 **Из Python (проверено):**
 ```powershell
-python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\file.docx" --collection docs_ft `
+python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\moskva.docx" --collection docs_ft `
   --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 --demo `
   --query "автоматизация развёртывания контейнеров"
 ```
@@ -266,7 +266,86 @@ for h in c.search("docs_sem", data=[qvec], anns_field="vector", limit=3, output_
 
 ---
 
-## 7. AI-агент: вопрос по документу текстом (LLM)
+## 7. Пример end-to-end: `moskva.docx` (заливка + 2 вопроса)
+
+Файл `D:\FILE_WORD\moskva.docx` (МГТУ им. Баумана, «Приоритет 2030», космические проекты)
+даёт **12 чанков**. Заливаем **оба** варианта (команды — из папки репо):
+
+```powershell
+# Вариант 1 — без модели (BM25):
+python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\moskva.docx" --collection moskva_ft `
+  --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 --recreate
+
+# Вариант 2 — с моделью (LM Studio):
+python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collection moskva_sem `
+  --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 `
+  --embedder api --api-base http://127.0.0.1:1234/v1 --api-key "<ТОКЕН LM STUDIO>" `
+  --api-model text-embedding-nomic-embed-text-v1.5 --batch 64 --recreate
+```
+
+Получится 2 коллекции: **`moskva_ft`** (поиск по словам) и **`moskva_sem`** (поиск по смыслу).
+
+### Вопрос 1 — прямой поиск (BM25), коллекция `moskva_ft`
+
+Вопрос (ключевые слова из текста): **«Приоритет 2030»**.
+
+- **В Attu:** открой `moskva_ft` → вкладка **Search** → **Add a search request** → **Full-Text** →
+  **Text Field** = `text` → **Search Text** = `Приоритет 2030` → **Search**.
+- **Результат** (проверено): верхний чанк — заголовок «БАУМАНА И ПРОГРАММА «ПРИОРИТЕТ 2030»» (score ≈ 2.7).
+
+> Итог: BM25 находит **по словам**. Работает без модели.
+
+### Вопрос 2 — семантический поиск (эмбеддинги), коллекция `moskva_sem`
+
+Вопрос **без точных слов** из текста: **«куда университет отправляет спутники и ракеты-носители»**.
+
+- **В Attu:** открой `moskva_sem` → **Search** → **Add a search request** → **Vector** →
+  **Vector Field** = `vector` → **Similarity Text** = вопрос → **Metric** = `COSINE` → **Search**.
+  (Перед этим — настройка **Settings → Embeddings**, см. раздел 5.)
+- **Результат** (проверено): поднимаются чанки про «Космический корабль для Марса»,
+  «Космический кабель», ракеты-носители — хотя слов «спутники»/«ракеты» в тексте может не быть.
+
+> Итог: семантика находит **по смыслу**. Нужна модель.
+
+### Вопрос 3 — ответ текстом через LLM (AI-агент)
+
+Настрой LLM (**Settings → LLM Configuration**, см. раздел 9), затем в коллекции `moskva_sem`
+открой панель **AI / Agent** и задай: **«Какие космические проекты есть у МГТУ им. Баумана?»** —
+агент возьмёт top-k чанков и **сформулирует ответ** через LLM.
+
+---
+
+## 8. Обратная выгрузка: Milvus → файл («развекторизация»)
+
+Milvus хранит **исходный текст** чанков (поле `text` или `content`), поэтому данные можно вернуть
+в файл. «Отменить» эмбеддинги в вектор нельзя, но текст — да.
+
+### A. Скрипт (txt / docx / jsonl)
+
+```powershell
+# в обычный текст:
+python .\scripts\milvus_export.py --collection moskva_sem --out moskva_back.txt `
+  --user root --password MilvusDemo123
+
+# обратно в Word:
+python .\scripts\milvus_export.py --collection moskva_sem --out moskva_back.docx --format docx `
+  --user root --password MilvusDemo123
+
+# в JSONL (каждая строка = чанк):
+python .\scripts\milvus_export.py --collection moskva_ft --out moskva_back.jsonl --format jsonl `
+  --user root --password MilvusDemo123
+```
+Скрипт сам определяет текстовое поле (`text`/`content`) и сортирует чанки по `chunk_index`.
+Проверено: `moskva_sem` → 12 строк → txt/docx/jsonl OK.
+
+### B. Через Attu UI
+
+1. Открой коллекцию → **Load** (обязательно).
+2. Меню коллекции → **Export Data** (окно «Export "<collection>"»).
+3. **Save to** — выбери место (Browse / системный диалог), **Format** — `JSONL` или `Parquet`.
+4. (опц.) **Filter expression** — напр. `chunk_index < 5`.
+5. **Start Export** → файл появится по указанному пути.
+## 9. AI-агент: вопрос по документу текстом (LLM)
 
 Поиск (раздел 6) отдаёт **куски** текста. Если хочешь, чтобы **модель написала ответ** по этим
 кускам — подключи LLM: **Settings → LLM Configuration**.
@@ -291,7 +370,7 @@ for h in c.search("docs_sem", data=[qvec], anns_field="vector", limit=3, output_
 После сохранения: открой коллекцию → панель **AI / Agent** → задай вопрос
 («как Толстой описывает Бородино?») — агент берёт top-k чанков и отвечает через LLM.
 
-## 8. Остановить / удалить
+## 10. Остановить / удалить
 
 ```powershell
 docker compose stop        # пауза (данные сохраняются)
@@ -301,7 +380,7 @@ docker compose down -v     # удалить ВСЁ вместе с данным�
 
 ---
 
-## 9. Если что-то не так
+## 11. Если что-то не так
 
 | Симптом | Что делать |
 |---------|-----------|
@@ -321,7 +400,7 @@ docker compose down -v     # удалить ВСЁ вместе с данным�
 
 ---
 
-## 10. Шпаргалка (весь путь)
+## 12. Шпаргалка (весь путь)
 
 ```powershell
 git clone https://github.com/one6way/milvus-attu-doc.git; cd milvus-attu-doc
@@ -330,16 +409,20 @@ docker compose up -d                      # поднять;  ждать healthy 
 python -m pip install -r .\scripts\requirements-vectorize.txt
 
 # Кейс A — БЕЗ модели (поиск по словам):
-python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\file.docx" --collection docs_ft --user root --password MilvusDemo123 --recreate --demo
+python .\scripts\docx_to_milvus_bm25.py --file "D:\FILE_WORD\moskva.docx" --collection docs_ft --user root --password MilvusDemo123 --recreate --demo
 
 # Кейс B1 — С моделью локально (LM Studio, 0 токенов):
-python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\file.docx" --collection docs_sem --user root --password MilvusDemo123 --embedder api --api-base http://127.0.0.1:1234/v1 --api-key "<ТОКЕН LM STUDIO>" --api-model text-embedding-nomic-embed-text-v1.5 --batch 64 --recreate
+python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collection docs_sem --user root --password MilvusDemo123 --embedder api --api-base http://127.0.0.1:1234/v1 --api-key "<ТОКЕН LM STUDIO>" --api-model text-embedding-nomic-embed-text-v1.5 --batch 64 --recreate
 
 # Кейс B2 — С моделью через внешний OpenAI-compatible:
-python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\file.docx" --collection docs_sem --user root --password MilvusDemo123 --embedder api --api-base https://<host>/v1 --api-key <key> --api-model text-embedding-3-small
+python .\scripts\vectorize_docx.py --file "D:\FILE_WORD\moskva.docx" --collection docs_sem --user root --password MilvusDemo123 --embedder api --api-base https://<host>/v1 --api-key <key> --api-model text-embedding-3-small
+
+# Обратная выгрузка (Milvus -> файл):
+python .\scripts\milvus_export.py --collection docs_sem --out moskva_back.docx --format docx --user root --password MilvusDemo123
 ```
 > Оба скрипта берут Milvus из `--host 127.0.0.1 --port 19530` по умолчанию (можно не указывать).
 
 Что где настраивается в Attu:
 - **Settings → Embeddings** — модель для семантического поиска (Вариант 2, из UI).
-- **Settings → LLM Configuration** — чат-модель для AI-агента (раздел 7).
+- **Settings → LLM Configuration** — чат-модель для AI-агента (раздел 9).
+- **Export Data** (меню коллекции) — выгрузка данных (раздел 8).

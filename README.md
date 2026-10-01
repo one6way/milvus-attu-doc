@@ -29,6 +29,7 @@
 | `scripts/vectorize_docx.py` | Векторизация `.docx` → коллекция Milvus (offline-модель или OpenAI-совместимый API) |
 | `scripts/docx_to_jsonl.py` | `.docx` → JSONL для ручного импорта в Attu (без модели, под BM25 full-text) |
 | `scripts/docx_to_milvus_bm25.py` | `.docx` → коллекция Milvus BM25 (full-text, без модели) одной командой |
+| `scripts/milvus_export.py` | Обратная выгрузка: коллекция Milvus → `.txt`/`.docx`/`.jsonl` |
 | `INSTRUCTION.md` | Пошаговая инструкция для новичка: поднять, залить Word, искать |
 | `scripts/requirements-vectorize.txt` | Зависимости Python для векторизации |
 | `.gitlab-ci.yml` | Пайплайн: lint + рендер чартов (best practice) |
