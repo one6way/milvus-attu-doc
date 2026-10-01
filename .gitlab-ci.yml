@@ -6,12 +6,13 @@
 #   package  : package:charts            (Helm-чарты в *.tgz -> artifacts)
 #   check    : check:artifacts           (проверка артефактов сборки)
 #   validate : prep:env, validate:render (окружение + рендер шаблонов)
-#   deploy   : deploy:milvus, deploy:attu (self-hosted runner, ручной запуск)
+#   deploy   : deploy:milvus, deploy:attu (через GitLab Agent, по тегу deploy-*)
 #   verify   : verify:stack              (проверка установленного ПО)
 #
-# Автоматические джобы идут на shared-раннере GitLab.com (без кластера).
-# deploy/verify требуют self-hosted runner с доступом к кластеру и запускаются
-# вручную: Run pipeline -> переменная DEPLOY=true.
+# ВСЕ джобы идут на shared-раннерах GitLab.com.
+# deploy/verify попадают на кластер через GitLab Agent for Kubernetes
+# (входящий доступ к кластеру не нужен) и запускаются по тегу deploy-*
+# либо вручную: Run pipeline -> переменная DEPLOY=true.
 # =============================================================================
 
 stages:
