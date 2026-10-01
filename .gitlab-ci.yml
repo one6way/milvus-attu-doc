@@ -1,0 +1,50 @@
+# Best-practice pipeline: только валидация (без доступа к кластеру и секретов).
+# Стадии: lint (скрипты/чарты) -> validate (рендер шаблонов).
+
+stages:
+  - lint
+  - validate
+
+default:
+  interruptible: true
+
+variables:
+  # Версия официального чарта Milvus (pinned) и его репозиторий
+  MILVUS_CHART_REPO: "https://zilliztech.github.io/milvus-helm/"
+  MILVUS_CHART_VERSION: "5.0.30"
+
+# ---------- lint ----------
+
+lint:powershell:
+  stage: lint
+  image: mcr.microsoft.com/powershell:7.4-ubuntu-22.04
+  script:
+    - pwsh -NoProfile -Command "Get-ChildItem scripts -Filter *.ps1 | ForEach-Object { $t=$null;$e=$null; [void][System.Management.Automation.Language.Parser]::ParseFile($_.FullName,[ref]$t,[ref]$e); if ($e) { Write-Error \"PS syntax error in $($_.Name): $($e[0].Message)\" } }; Write-Host 'PowerShell syntax OK'"
+
+lint:python:
+  stage: lint
+  image: python:3.11-slim
+  script:
+    - python -m compileall -q scripts
+    - echo "Python compile OK"
+
+lint:helm:
+  stage: lint
+  image: alpine/helm:3.16.4
+  script:
+    - helm lint chart/attu
+    - helm repo add milvus "$MILVUS_CHART_REPO" && helm repo update
+    - helm lint milvus/milvus --version "$MILVUS_CHART_VERSION" -f values/milvus.yaml
+
+# ---------- validate (render) ----------
+
+validate:render:
+  stage: validate
+  image: alpine/helm:3.16.4
+  script:
+    - echo "Rendering Attu chart..."
+    - helm template attu chart/attu -f values/attu.yaml --set image.repository=zilliz/attu --set image.tag=v3.0.1 > /dev/null
+    - echo "Rendering Milvus chart..."
+    - helm repo add milvus "$MILVUS_CHART_REPO" && helm repo update
+    - helm template milvus milvus/milvus --version "$MILVUS_CHART_VERSION" -f values/milvus.yaml > /dev/null
+    - echo "Both charts render OK"

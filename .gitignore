@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
+# Секреты / токены (НЕ коммитить)
+.env
+*.env
+!.env.example
+*.token
+gitlab-token*
+
+# Локальные артефакты
+*.tar
+*.tar.gz
+*.tgz
+artifacts/
+
+# IDE / ОС
+.idea/
+.vscode/
+.cursor/
+.DS_Store
+Thumbs.db
+*.log
+
+# macOS AppleDouble (метаданные, попадают при копировании с mac)
+._*

@@ -1,0 +1,61 @@
+# Milvus 3.0 (Helm chart 5.0.30) для локального кластера Docker Desktop.
+# Назначение: минимальный standalone на одном узле с StorageClass "standard".
+# Установка: scripts/install-milvus-attu.ps1
+#
+# Отличия от старого vendored чарта (chart/milvus 4.2.33, Milvus 2.5.0):
+#   - message queue = woodpecker (встроен), Pulsar больше НЕ требуется;
+#   - pulsarv3/pulsar/kafka выключены явно.
+
+cluster:
+  enabled: false
+
+standalone:
+  replicas: 1
+  # Дефолт 2.6+/3.0, но фиксируем явно: встроенный WAL, без Pulsar.
+  messageQueue: woodpecker
+  resources:
+    requests:
+      cpu: 200m
+      memory: 1Gi
+    limits:
+      cpu: "2"
+      memory: 3Gi
+  persistence:
+    enabled: true
+    persistentVolumeClaim:
+      storageClass: standard
+      size: 10Gi
+
+image:
+  all:
+    repository: milvusdb/milvus
+    tag: v3.0.1
+    pullPolicy: IfNotPresent
+
+# Сообщения шины: всё выключено, работаем на woodpecker.
+pulsarv3:
+  enabled: false
+pulsar:
+  enabled: false
+kafka:
+  enabled: false
+
+etcd:
+  enabled: true
+  replicaCount: 1
+  persistence:
+    enabled: true
+    storageClass: standard
+    size: 4Gi
+
+minio:
+  enabled: true
+  mode: standalone
+  persistence:
+    enabled: true
+    storageClass: standard
+    size: 10Gi
+
+service:
+  type: ClusterIP
+  port: 19530

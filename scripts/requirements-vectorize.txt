@@ -1,0 +1,20 @@
+# Зависимости для scripts/vectorize_docx.py
+#
+# Обязательные (чтение .docx + запись в Milvus + HTTP для --embedder api):
+python-docx>=1.1.0
+pymilvus>=2.6.0,<3.1.0
+requests>=2.28.0
+
+# ---------------------------------------------------------------------------
+# Только для --embedder offline (локальная модель, 0 токенов).
+# ВНИМАНИЕ: torch ставится с CUDA-сборкой под конкретную версию драйвера.
+# Для свежих GPU (напр. RTX 50xx / Blackwell) нужен torch с CUDA 12.8+.
+# Рекомендуемая установка (пример для CUDA 12.8):
+#   pip install torch --index-url https://download.pytorch.org/whl/cu128
+# затем:
+#   pip install sentence-transformers>=3.0.0
+#
+# CPU-only вариант (если нет GPU):
+#   pip install torch --index-url https://download.pytorch.org/whl/cpu
+# ---------------------------------------------------------------------------
+sentence-transformers>=3.0.0
