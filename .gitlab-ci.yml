@@ -1,19 +1,51 @@
-# Best-practice pipeline: только валидация (без доступа к кластеру и секретов).
-# Стадии: lint (скрипты/чарты) -> validate (рендер шаблонов).
+# =============================================================================
+# Milvus 3.0 + Attu 3.0 — CI/CD
+#
+# Стадии и джобы:
+#   lint     : lint:yamllint, lint:powershell, lint:python, lint:helm
+#   package  : package:charts            (Helm-чарты в *.tgz -> artifacts)
+#   check    : check:artifacts           (проверка артефактов сборки)
+#   validate : prep:env, validate:render (окружение + рендер шаблонов)
+#   deploy   : deploy:milvus, deploy:attu (self-hosted runner, ручной запуск)
+#   verify   : verify:stack              (проверка установленного ПО)
+#
+# Автоматические джобы идут на shared-раннере GitLab.com (без кластера).
+# deploy/verify требуют self-hosted runner с доступом к кластеру и запускаются
+# вручную: Run pipeline -> переменная DEPLOY=true.
+# =============================================================================
 
 stages:
   - lint
+  - package
+  - check
   - validate
+  - deploy
+  - verify
 
 default:
   interruptible: true
 
 variables:
-  # Версия официального чарта Milvus (pinned) и его репозиторий
+  # Закреплённые версии (pinned) для воспроизводимости
   MILVUS_CHART_REPO: "https://zilliztech.github.io/milvus-helm/"
-  MILVUS_CHART_VERSION: "5.0.30"
+  MILVUS_CHART_VERSION: "5.0.30"        # -> образ milvusdb/milvus:v3.0.1
+  ATTU_REPOSITORY: "zilliz/attu"
+  ATTU_TAG: "v3.0.1"
+  HELM_IMAGE: "alpine/helm:3.16.4"
+  NAMESPACE: "milvus"
+  RUNNER_TAG: "milvus-k8s"              # тег self-hosted раннера с доступом к кластеру
+  GIT_DEPTH: "50"
 
-# ---------- lint ----------
+# =============================================================================
+# LINT
+# =============================================================================
+
+lint:yamllint:
+  stage: lint
+  image: python:3.11-slim
+  script:
+    - pip install --quiet yamllint
+    - yamllint -c .yamllint .gitlab-ci.yml values/
 
 lint:powershell:
   stage: lint
@@ -32,13 +64,66 @@ lint:helm:
   stage: lint
   image:
     name: alpine/helm:3.16.4
-    entrypoint: [""]   # у образа entrypoint=helm; сбрасываем, чтобы GitLab мог выполнить script
+    entrypoint: [""]     # у образа entrypoint=helm; сбрасываем для запуска script
   script:
     - helm lint chart/attu
-    - helm repo add milvus "$MILVUS_CHART_REPO" && helm repo update
-    - helm lint milvus/milvus --version "$MILVUS_CHART_VERSION" -f values/milvus.yaml
+    - helm repo add milvus "$MILVUS_CHART_REPO" && helm repo update milvus
+    # helm lint не имеет --version: сначала тянем нужную версию чарта
+    - helm pull milvus/milvus --version "$MILVUS_CHART_VERSION" --untar --untardir .charts
+    - helm lint .charts/milvus -f values/milvus.yaml
+# =============================================================================
+# PACKAGE — сборка артефактов (Helm-чарты)
+# =============================================================================
 
-# ---------- validate (render) ----------
+package:charts:
+  stage: package
+  image:
+    name: alpine/helm:3.16.4
+    entrypoint: [""]
+  script:
+    - mkdir -p dist
+    - helm package chart/attu --destination dist
+    - helm repo add milvus "$MILVUS_CHART_REPO" && helm repo update milvus
+    - helm pull milvus/milvus --version "$MILVUS_CHART_VERSION" --destination dist
+    - ls -l dist
+  artifacts:
+    name: "charts-$CI_COMMIT_SHORT_SHA"
+    paths:
+      - dist/*.tgz
+    expire_in: 1 week
+
+# =============================================================================
+# CHECK — проверка артефактов сборки
+# =============================================================================
+
+check:artifacts:
+  stage: check
+  image:
+    name: alpine/helm:3.16.4
+    entrypoint: [""]
+  needs: ["package:charts"]
+  script:
+    - ls -l dist
+    - test -n "$(ls -A dist/*.tgz)" || (echo "Нет .tgz артефактов" && exit 1)
+    - for f in dist/*.tgz; do echo "== $f"; helm show chart "$f"; done
+    - echo "Артефакты валидны"
+
+# =============================================================================
+# VALIDATE — окружение и рендер
+# =============================================================================
+
+prep:env:
+  stage: validate
+  image:
+    name: alpine/helm:3.16.4
+    entrypoint: [""]
+  script:
+    - echo "Helm:"; helm version --short
+    - echo "Ожидаем Milvus chart=$MILVUS_CHART_VERSION Attu=$ATTU_REPOSITORY:$ATTU_TAG ns=$NAMESPACE"
+    - test -f values/milvus.yaml || (echo "missing values/milvus.yaml" && exit 1)
+    - test -f values/attu.yaml   || (echo "missing values/attu.yaml" && exit 1)
+    - test -f chart/attu/Chart.yaml || (echo "missing chart/attu" && exit 1)
+    - echo "Окружение и файлы в порядке"
 
 validate:render:
   stage: validate
@@ -46,9 +131,54 @@ validate:render:
     name: alpine/helm:3.16.4
     entrypoint: [""]
   script:
-    - echo "Rendering Attu chart..."
-    - helm template attu chart/attu -f values/attu.yaml --set image.repository=zilliz/attu --set image.tag=v3.0.1 > /dev/null
-    - echo "Rendering Milvus chart..."
-    - helm repo add milvus "$MILVUS_CHART_REPO" && helm repo update
+    - echo "Rendering Attu..."
+    - helm template attu chart/attu -f values/attu.yaml --set image.repository="$ATTU_REPOSITORY" --set image.tag="$ATTU_TAG" > /dev/null
+    - echo "Rendering Milvus..."
+    - helm repo add milvus "$MILVUS_CHART_REPO" && helm repo update milvus
     - helm template milvus milvus/milvus --version "$MILVUS_CHART_VERSION" -f values/milvus.yaml > /dev/null
     - echo "Both charts render OK"
+# =============================================================================
+# DEPLOY — установка на кластер (self-hosted runner, ручной запуск)
+# =============================================================================
+
+.deploy_rules: &deploy_rules
+  - if: '$DEPLOY == "true"'
+    when: always
+  - when: never
+
+deploy:milvus:
+  stage: deploy
+  tags: ["$RUNNER_TAG"]
+  rules: *deploy_rules
+  script:
+    - echo "== Кластер =="; kubectl config current-context
+    - helm repo add milvus "$MILVUS_CHART_REPO" && helm repo update milvus
+    - kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+    - helm upgrade --install milvus milvus/milvus --version "$MILVUS_CHART_VERSION" -n "$NAMESPACE" -f values/milvus.yaml --wait --timeout 15m
+    - kubectl -n "$NAMESPACE" get pods
+
+deploy:attu:
+  stage: deploy
+  tags: ["$RUNNER_TAG"]
+  rules: *deploy_rules
+  needs: ["deploy:milvus"]
+  script:
+    - helm upgrade --install attu chart/attu -n "$NAMESPACE" -f values/attu.yaml --set image.repository="$ATTU_REPOSITORY" --set image.tag="$ATTU_TAG" --wait --timeout 5m
+    - kubectl -n "$NAMESPACE" get svc attu
+
+# =============================================================================
+# VERIFY — проверка установленного ПО (self-hosted runner)
+# =============================================================================
+
+verify:stack:
+  stage: verify
+  tags: ["$RUNNER_TAG"]
+  rules: *deploy_rules
+  needs: ["deploy:attu"]
+  script:
+    - echo "== Pods =="; kubectl -n "$NAMESPACE" get pods -o wide
+    - echo "== Services =="; kubectl -n "$NAMESPACE" get svc
+    - kubectl -n "$NAMESPACE" wait --for=condition=Ready pod -l app.kubernetes.io/instance=milvus --timeout=600s
+    - kubectl -n "$NAMESPACE" wait --for=condition=Ready pod -l app.kubernetes.io/instance=attu --timeout=300s
+    - echo "== Helm releases =="; helm list -n "$NAMESPACE"
+    - echo "Стенд Milvus + Attu установлен и готов"

@@ -85,27 +85,53 @@ helm uninstall attu milvus -n milvus
 kubectl delete ns milvus
 ```
 
-## CI
+## CI/CD (GitLab)
 
-`.gitlab-ci.yml` — стадии `lint` и `validate`:
-- `helm lint` нашего чарта Attu, рендер обоих чартов (`helm template`);
-- синтаксис PowerShell-скриптов и компиляция Python.
+`.gitlab-ci.yml` — стадии и джобы:
 
-Пайплайн не требует доступа к кластеру — только проверяет, что шаблоны и скрипты валидны.
+| Стадия | Джоб | Что делает | Раннер |
+|--------|------|-----------|--------|
+| lint | `lint:yamllint` | Проверка YAML (`.gitlab-ci.yml`, `values/`) | shared |
+| lint | `lint:powershell` | Синтаксис PowerShell | shared |
+| lint | `lint:python` | Компиляция Python | shared |
+| lint | `lint:helm` | `helm lint` обоих чартов | shared |
+| package | `package:charts` | Сборка Helm-чартов в `dist/*.tgz` (artifacts) | shared |
+| check | `check:artifacts` | Проверка артефактов сборки | shared |
+| validate | `prep:env` | Проверка окружения и наличия файлов | shared |
+| validate | `validate:render` | `helm template` обоих чартов | shared |
+| deploy | `deploy:milvus` | Установка Milvus | **self-hosted** |
+| deploy | `deploy:attu` | Установка Attu | **self-hosted** |
+| verify | `verify:stack` | Проверка установленного ПО | **self-hosted** |
+
+Автоматические джобы (lint/package/check/validate) работают на shared-раннере GitLab.com
+и не требуют доступа к кластеру. Джобы `deploy:*` и `verify:stack` вынесены отдельно,
+т.к. **кластер в CI эфемерный**, а «установить Milvus → установить Attu → проверить»
+должно идти на **одном и том же** кластере — поэтому они выполняются на self-hosted раннере.
 
 ### Требование: активный раннер
 
-CI-джобы выполняются на **раннере**. На GitLab.com у нового бесплатного аккаунта shared-раннеры
-неактивны (статус `paused`) до **верификации аккаунта**:
+На GitLab.com у нового бесплатного аккаунта shared-раннеры неактивны (статус `paused`).
+Лечится так:
 
-1. GitLab → (аватар) → **Edit profile** → **Account** → верификация личности (карта/телефон).
-2. Проект → **Settings → CI/CD → Runners** → включить **shared runners**.
+1. GitLab → (аватар) → **Edit profile → Account** → верификация личности.
+2. Проект → **Settings → CI/CD → Runners** → включить shared runners.
 
-Без раннера пайплайн падает сразу (jobs не создаются).
+### Self-hosted раннер для deploy/verify
+
+Чтобы джобы установки работали, зарегистрируйте раннер на машине с кластером
+(Docker Desktop + kubectl + helm):
+
+1. Проект → **Settings → CI/CD → Runners → New project runner**, tag: **`milvus-k8s`**.
+2. Установить и запустить `gitlab-runner` (executor: **shell**, на Windows достаточно
+   установленных `kubectl`/`helm`; kubeconfig — из Docker Desktop).
+3. Запуск пайплайна с установкой: **Run pipeline** → переменная **`DEPLOY=true`**.
+
+Джобы `deploy/verify` не создаются в обычном пайплайне (см. `rules`), поэтому без
+раннера пайплайн остаётся зелёным.
 
 ### Проверка без раннера (локально)
 
-Тот же набор проверок, что в CI:
+Тот же набор статических проверок:
 
 ```powershell
 .\scripts\validate-all.ps1
