@@ -116,18 +116,31 @@ kubectl delete ns milvus
 1. GitLab → (аватар) → **Edit profile → Account** → верификация личности.
 2. Проект → **Settings → CI/CD → Runners** → включить shared runners.
 
-### Self-hosted раннер для deploy/verify
+### GitLab Agent для deploy/verify (self-hosted runner не нужен)
 
-Чтобы джобы установки работали, зарегистрируйте раннер на машине с кластером
-(Docker Desktop + kubectl + helm):
+Джобы `deploy:*` и `verify:stack` выполняются на **shared-раннерах GitLab.com** через
+**GitLab Agent for Kubernetes** (Free). Агент ставится в кластер один раз, сам соединяется
+с `kas.gitlab.com` — входящий доступ к кластеру не требуется.
 
-1. Проект → **Settings → CI/CD → Runners → New project runner**, tag: **`milvus-k8s`**.
-2. Установить и запустить `gitlab-runner` (executor: **shell**, на Windows достаточно
-   установленных `kubectl`/`helm`; kubeconfig — из Docker Desktop).
-3. Запуск пайплайна с установкой: **Run pipeline** → переменная **`DEPLOY=true`**.
+Что сделано в проекте:
+1. Конфиг агента: `.gitlab/agents/milvus-k8s/config.yaml` (разрешает CI проекта управлять кластером).
+2. Агент установлен в кластер (namespace `gitlab-agent`):
+   ```powershell
+   helm repo add gitlab https://charts.gitlab.io
+   helm repo update
+   helm upgrade --install milvus-k8s gitlab/gitlab-agent -n gitlab-agent --create-namespace `
+     --set config.token=<AGENT_TOKEN> --set config.kasAddress=wss://kas.gitlab.com
+   ```
+3. Джобы используют контекст агента (`environment.kubernetes.agent` + `KUBE_CONTEXT`).
 
-Джобы `deploy/verify` не создаются в обычном пайплайне (см. `rules`), поэтому без
-раннера пайплайн остаётся зелёным.
+Запуск установки: **Run pipeline** → переменная **`DEPLOY=true`**.
+Обычный push деплой не трогает (`rules: if $DEPLOY == "true"`), поэтому пайплайн остаётся зелёным.
+
+Обновить/переустановить агента:
+```powershell
+helm upgrade milvus-k8s gitlab/gitlab-agent -n gitlab-agent --set config.token=<AGENT_TOKEN> --set config.kasAddress=wss://kas.gitlab.com
+kubectl -n gitlab-agent get pods
+```
 
 ### Проверка без раннера (локально)
 

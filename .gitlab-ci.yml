@@ -33,7 +33,8 @@ variables:
   ATTU_TAG: "v3.0.1"
   HELM_IMAGE: "alpine/helm:3.16.4"
   NAMESPACE: "milvus"
-  RUNNER_TAG: "milvus-k8s"              # тег self-hosted раннера с доступом к кластеру
+  # GitLab Agent for Kubernetes (см. .gitlab/agents/milvus-k8s/config.yaml)
+  AGENT_PATH: "nikobellic438/milvus:milvus-k8s"
   GIT_DEPTH: "50"
 
 # =============================================================================
@@ -137,8 +138,11 @@ validate:render:
     - helm repo add milvus "$MILVUS_CHART_REPO" && helm repo update milvus
     - helm template milvus milvus/milvus --version "$MILVUS_CHART_VERSION" -f values/milvus.yaml > /dev/null
     - echo "Both charts render OK"
+
 # =============================================================================
-# DEPLOY — установка на кластер (self-hosted runner, ручной запуск)
+# DEPLOY — установка на кластер через GitLab Agent for Kubernetes
+# Работает на shared-раннерах GitLab.com: входящий доступ к кластеру не нужен,
+# соединение инициирует агент из кластера (KAS).
 # =============================================================================
 
 .deploy_rules: &deploy_rules
@@ -146,35 +150,56 @@ validate:render:
     when: always
   - when: never
 
+.deploy_base: &deploy_base
+  image:
+    name: alpine/k8s:1.31.1    # kubectl + helm
+    entrypoint: [""]
+  variables:
+    KUBE_CONTEXT: "nikobellic438/milvus:milvus-k8s"
+  before_script:
+    - kubectl config use-context "$KUBE_CONTEXT"
+
 deploy:milvus:
+  <<: *deploy_base
   stage: deploy
-  tags: ["$RUNNER_TAG"]
   rules: *deploy_rules
+  environment:
+    name: milvus
+    kubernetes:
+      agent: nikobellic438/milvus:milvus-k8s
   script:
-    - echo "== Кластер =="; kubectl config current-context
+    - echo "Контекст:"; kubectl config current-context
     - helm repo add milvus "$MILVUS_CHART_REPO" && helm repo update milvus
     - kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
     - helm upgrade --install milvus milvus/milvus --version "$MILVUS_CHART_VERSION" -n "$NAMESPACE" -f values/milvus.yaml --wait --timeout 15m
     - kubectl -n "$NAMESPACE" get pods
 
 deploy:attu:
+  <<: *deploy_base
   stage: deploy
-  tags: ["$RUNNER_TAG"]
   rules: *deploy_rules
   needs: ["deploy:milvus"]
+  environment:
+    name: milvus
+    kubernetes:
+      agent: nikobellic438/milvus:milvus-k8s
   script:
     - helm upgrade --install attu chart/attu -n "$NAMESPACE" -f values/attu.yaml --set image.repository="$ATTU_REPOSITORY" --set image.tag="$ATTU_TAG" --wait --timeout 5m
     - kubectl -n "$NAMESPACE" get svc attu
 
 # =============================================================================
-# VERIFY — проверка установленного ПО (self-hosted runner)
+# VERIFY — проверка установленного ПО (через агента)
 # =============================================================================
 
 verify:stack:
+  <<: *deploy_base
   stage: verify
-  tags: ["$RUNNER_TAG"]
   rules: *deploy_rules
   needs: ["deploy:attu"]
+  environment:
+    name: milvus
+    kubernetes:
+      agent: nikobellic438/milvus:milvus-k8s
   script:
     - echo "== Pods =="; kubectl -n "$NAMESPACE" get pods -o wide
     - echo "== Services =="; kubectl -n "$NAMESPACE" get svc
