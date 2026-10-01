@@ -1,0 +1,5 @@
+# Конфигурация GitLab Agent for Kubernetes.
+# Разрешает CI/CD проекта nikobellic438/milvus управлять кластером через агента.
+ci_access:
+  projects:
+    - id: nikobellic438/milvus
