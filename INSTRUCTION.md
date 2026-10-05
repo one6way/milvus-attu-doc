@@ -168,12 +168,25 @@ python .\scripts\vectorize_docx.py --file ".\samples\moskva.docx" --collection d
 
 #### Настроить ту же модель в Attu (для поиска из UI)
 
-Attu → **Settings → Embeddings** → **Add Provider** → заполни **Provider** (OpenAI или Custom),
-**Base URL** (тот же, до `/v1`), **API Key**, **Model Name** (та же модель), **Dimension**.
+Attu → **Settings → Embedding** → **Add Provider**. Рабочие значения для LM Studio
+(проверено на этом стенде):
+
+| Поле | Значение |
+|------|----------|
+| Provider | `Custom` |
+| Model | `text-embedding-nomic-embed-text-v1.5` |
+| Base URL | `http://host.docker.internal:1234` ← **без** `/v1` (Attu сам добавит путь) |
+| API Key | токен LM Studio (`sk-lm-...`) — только если в LM Studio включён **Require Authentication** |
+| Dimension | `768` |
+| Name | `LM Studio nomic` |
+
+Нажми **Test Connection** → должно быть «Connection successful» → **Save**.
+Поиск потом: вкладка **Search** → кнопка **Embed text/image** → введи текст → **Embed** → **Search** (см. раздел 6, Способ A).
 
 > ⚠️ **Модель документов и модель запроса обязаны совпадать.**
-> Для локального LM Studio из контейнера Attu адрес — `http://host.docker.internal:1234/v1`
-> (проверь кнопкой Test в настройках).
+> Для локального LM Studio из контейнера Attu адрес — `http://host.docker.internal:1234`
+> (то же самое можно дать как `http://<IP-хоста>:1234`, напр. `http://192.168.1.107:1234` —
+> контейнер Attu видит оба адреса).
 
 > Коллекции из Кейса A (`docs_ft`) и Кейса B (`docs_sem`/`voina_i_mir`) — **разные**: это нормально.
 
@@ -220,17 +233,20 @@ python .\scripts\docx_to_milvus_bm25.py --file ".\samples\moskva.docx" --collect
 
 #### Способ A — из Attu UI (нужен embedding-провайдер в настройках)
 
-1. Сначала настрой провайдер эмбеддингов: **Settings → Embeddings → Add Provider**
-   (**Base URL** до `/v1`, **API Key**, **Model Name** — та же модель, что при заливке).
-   Для LM Studio из контейнера Attu: `http://host.docker.internal:1234/v1`.
+1. Сначала настрой провайдер эмбеддингов:
+   **Settings → Embedding → Add Provider** → Provider = **Custom**,
+   в поле Base URL написать `http://host.docker.internal:1234`
+   (**без** `/v1` — Attu сам берёт модель и путь), API Key — токен LM Studio,
+   Dimension — `768`, Name — любое. **Test Connection** → *Connection successful* → **Save**.
 2. Открой коллекцию (`voina_i_mir`) → вкладка **Search**.
-3. **Add a search request** → тип **Vector**.
-4. **Vector Field** — выбери поле `vector`.
-5. Вместо ручного вектора выбери **Similarity Text** и введи фразу
-   (подсказка: *Enter text to find approximately similar content*) — Attu сам посчитает вектор запроса.
-6. **Metric** — `COSINE`. Нажми **Search**.
+3. Нажми кнопку **Embed text/image** (иконка рядом с полем Query Vector).
+4. В модалке **Embedding Provider** введи запрос обычными словами
+   («как Толстой описывает Бородинское сражение») → **Embed**.
+   Attu сам посчитает вектор (видно как заполненное поле Query Vector, dim 768).
+5. Нажми **Search** → таблица результатов: score + content + chunk_index.
 
-> Если п.1 не настроен, Attu напишет «No embedding providers configured» и Similarity Text не сработает.
+> Если п.1 не настроен, Attu напишет «No embedding providers configured»
+> и кнопка Embed не сработает. Проверено: 10 результатов, 50ms, топ-1 score 0.8498.
 
 #### Способ B — из Python через тот же endpoint (проверено)
 
@@ -309,28 +325,34 @@ Databases ▾ default
  Results:  chunk=1  score=2.742  «…ПРИОРИТЕТ 2030…»
 ```
 
-**4. Attu: Search, режим Vector + Similarity Text (по смыслу)**
+**4. Attu: Search, кнопка «Embed text/image» (по смыслу)**
 ```
-[ Vector Search ]                 [ + Add a search request ]
-  Type          ▾ Vector
-  Vector Field  ▾ vector
-  ◉ Similarity Text     ○ Query Vector (ручной)
-  Similarity Text [ куда отправляют спутники ]  ← Attu сам считает вектор
-  Metric        ▾ COSINE
+[ Vector Search ]                    [ Embed text/image 🔮 ]
+Query Vector  ▸ нажми Embed → модалка:
+┌ Embedding Provider ───────────────────────┐
+│ Provider: LM Studio nomic (768d)          │
+│ Enter text to embed [ как Толстой описывает Бородинское сражение ] │
+│                           [   Embed   ]   │
+└───────────────────────────────────────────┘
+  → поле Query Vector заполнилось само (dim 768)
                               [   Search   ]
 ──────────────────────────────────────────
- Results:  chunk=11 dist=0.776  «…Космический кабель…»
+ Results:  #1 score=0.8498 «…конец романа написан Толстым…»
+           #2 score=0.8497 «…Сражение началось канонадой с обеих сторон…»
 ```
-Если поле Similarity Text серое / «No embedding providers configured» →
-не настроен **Settings → Embeddings**.
+Если кнопка Embed пишет «No embedding providers configured» →
+не настроен **Settings → Embedding → Add Provider**.
 
-**5. Attu: Settings → Embeddings → Add Provider**
+**5. Attu: Settings → Embedding → Add Provider (проверенная настройка)**
 ```
-Provider   ▾ OpenAI | Custom
-Base URL   [ http://host.docker.internal:1234/v1 ]
+Provider   ▾ Custom
+Model      [ text-embedding-nomic-embed-text-v1.5 ]
+Base URL   [ http://host.docker.internal:1234 ]   ← без /v1
 API Key    [ sk-lm-...                            ]
-Model Name [ text-embedding-nomic-embed-text-v1.5 ]
-Dimension  [ 768 ]         [ Test ]  [ Save ]
+Dimension  [ 768 ]
+Name       [ LM Studio nomic ]
+             [ Test Connection ] → Connection successful
+             [ Save ]
 ```
 
 **6. Attu: Settings → LLM Configuration (чат-агент)**
@@ -394,9 +416,9 @@ python .\scripts\vectorize_docx.py --file ".\samples\moskva.docx" --collection m
 
 Вопрос **без точных слов** из текста: **«куда университет отправляет спутники и ракеты-носители»**.
 
-- **В Attu:** открой `moskva_sem` → **Search** → **Add a search request** → **Vector** →
-  **Vector Field** = `vector` → **Similarity Text** = вопрос → **Metric** = `COSINE` → **Search**.
-  (Перед этим — настройка **Settings → Embeddings**, см. раздел 5.)
+- **В Attu:** открой `moskva_sem` → **Search** → кнопка **Embed text/image** →
+  введи вопрос → **Embed** → **Search**.
+  (Перед этим — настройка **Settings → Embedding**, см. раздел 5.)
 - **Результат** (проверено): поднимаются чанки про «Космический корабль для Марса»,
   «Космический кабель», ракеты-носители — хотя слов «спутники»/«ракеты» в тексте может не быть.
 
@@ -449,7 +471,22 @@ python .\scripts\milvus_export.py --collection moskva_ft --out moskva_back.jsonl
 Поиск (раздел 6) отдаёт **куски** текста. Если хочешь, чтобы **модель написала ответ** по этим
 кускам — подключи LLM: **Settings → LLM Configuration**.
 
-| Поле | Что писать (пример — Cline-шлюз) |
+**Вариант 1 — свой LM Studio (локально, 0 токенов, проверено):**
+
+| Поле | Значение |
+|------|----------|
+| **Provider** | `OpenAI` |
+| **Endpoint URL** | `http://host.docker.internal:1234` ← base БЕЗ `/v1/chat/completions` |
+| **Model Name** | `qwen3.6-35b-a3b` (или `deepseek-v2-lite-chat`, `devstral-small-2-24b-instruct-2512`, `openai/gpt-oss-20b`) |
+| **API Key** | токен LM Studio (`sk-lm-...`) |
+| **Temperature** | `0` (или 0.7) |
+| **Max Tokens** | `4096` |
+
+> Attu сам допишет путь: получится `http://host.docker.internal:1234/v1/chat/completions`.
+
+**Вариант 2 — внешний шлюз (пример — Cline-шлюз):**
+
+| Поле | Что писать |
 |------|----------------------------------|
 | **Provider** | `OpenAI` |
 | **Endpoint URL** | `https://api.cline.bot/api` |
@@ -490,7 +527,7 @@ docker compose down -v     # удалить ВСЁ вместе с данным�
 | `ERROR: --embedder offline требует sentence-transformers` | Используй `--embedder api` (Кейс B, OpenAI-compatible) или поставь локальную модель. |
 | `ERROR: API 401/403` при `--embedder api` | Проверь `--api-base` (должен оканчиваться на `/v1`), ключ и имя модели. |
 | `ERROR: API 404` | Неверный путь: base должен быть `https://host/v1` (скрипт добавит `/embeddings`). |
-| В Attu «No embedding providers configured» | Настрой **Settings → Embeddings → Add Provider** (для семантического поиска из UI). |
+| В Attu «No embedding providers configured» | Настрой **Settings → Embedding → Add Provider** (для семантического поиска из UI). |
 | В Attu «Collection must be loaded to search» | Нажми **Load** у коллекции. |
 | Attu не видит LM Studio на 127.0.0.1 | Из контейнера хост — `http://host.docker.internal:1234/v1` (Base URL в настройках). |
 | LLM не отвечает / 401 | Проверь Endpoint URL (только base, без пути), ключ и Model Name. Cline: `https://api.cline.bot/api`. |
