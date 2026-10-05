@@ -65,6 +65,9 @@ def main(argv=None):
                         "(для nomic-embed: 'search_document: '). В Milvus текст хранится без префикса.")
     p.add_argument("--header-context", action="store_true",
                    help="добавлять в текст эмбеддинга заголовок 'Раздел. Документ.' (улучшает попадание)")
+    p.add_argument("--bm25", action="store_true",
+                   help="создать гибридную коллекцию: добавить sparse-поле с BM25-функцией по 'content' "
+                        "(полнотекстовый поиск по словам, без модели) + индекс SPARSE_INVERTED_INDEX")
     args = p.parse_args(argv)
 
     rows_in = []
@@ -103,14 +106,21 @@ def main(argv=None):
         schema = MilvusClient.create_schema(auto_id=True, enable_dynamic_field=False)
         schema.add_field(field_name="id", datatype=DataType.INT64, is_primary=True)
         schema.add_field(field_name="vector", datatype=DataType.FLOAT_VECTOR, dim=dim)
-        schema.add_field(field_name="content", datatype=DataType.VARCHAR, max_length=65535)
+        schema.add_field(field_name="content", datatype=DataType.VARCHAR, max_length=65535,
+                         enable_analyzer=args.bm25)
         schema.add_field(field_name="section", datatype=DataType.VARCHAR, max_length=512)
         schema.add_field(field_name="doc", datatype=DataType.VARCHAR, max_length=1024)
         schema.add_field(field_name="chunk_index", datatype=DataType.INT64)
         schema.add_field(field_name="source", datatype=DataType.VARCHAR, max_length=512)
         idx = client.prepare_index_params()
         idx.add_index(field_name="vector", index_type=args.index, metric_type=args.metric)
-        print(f"[milvus] create {args.collection} dim={dim} metric={args.metric}", flush=True)
+        if args.bm25:
+            from pymilvus import Function, FunctionType
+            schema.add_field(field_name="sparse", datatype=DataType.SPARSE_FLOAT_VECTOR)
+            schema.add_function(Function(name="bm25_fn", function_type=FunctionType.BM25,
+                                         input_field_names=["content"], output_field_names=["sparse"]))
+            idx.add_index(field_name="sparse", index_type="SPARSE_INVERTED_INDEX", metric_type="BM25")
+        print(f"[milvus] create {args.collection} dim={dim} metric={args.metric} bm25={args.bm25}", flush=True)
         client.create_collection(collection_name=args.collection, schema=schema, index_params=idx)
 
     data = []
