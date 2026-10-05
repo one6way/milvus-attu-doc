@@ -466,6 +466,50 @@ python .\scripts\milvus_export.py --collection moskva_ft --out moskva_back.jsonl
 3. **Save to** — выбери место (Browse / системный диалог), **Format** — `JSONL` или `Parquet`.
 4. (опц.) **Filter expression** — напр. `chunk_index < 5`.
 5. **Start Export** → файл появится по указанному пути.
+
+## 8a. RAG из веб-страницы: правила REDLINE RP (пример «спарсённый сайт → Milvus»)
+
+Полный цикл: сайт → парсинг → чанки → эмбеддинги → Milvus → вопросы в Attu **строго по правилам** (без придумывания).
+
+### 1. Откуда берутся правила
+Страница `https://redlinerp.ru/rules.html` — оболочка, реальные данные в **`https://redlinerp.ru/rules.json`**
+(структура: 16 разделов × карточки `{title, body}`). Скачать:
+```powershell
+curl.exe -L "https://redlinerp.ru/rules.json" -o data\rules.json
+```
+
+### 2. Парсинг в чанки (скрипт уже в репо)
+```powershell
+python .\scripts\parse_redline_rules.py --input .\data\rules.json --out .\data\redline_rules.jsonl
+# → разделов=16 чанков=208
+```
+Каждый чанк: `text` (чистый текст без HTML), `section` (раздел), `doc` (документ), `chunk_index`, `source`.
+(Либо `--url https://redlinerp.ru/rules.json` — скачает сам.)
+
+### 3. Загрузка в Milvus (LM Studio, dim=768)
+```powershell
+python .\scripts\load_jsonl_milvus.py --jsonl .\data\redline_rules.jsonl --collection redline_rules `
+  --api-base http://127.0.0.1:1234/v1 --api-key "<токен LM Studio>" `
+  --api-model text-embedding-nomic-embed-text-v1.5 `
+  --doc-prefix "search_document: " --header-context `
+  --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 --recreate
+```
+- `--doc-prefix "search_document: "` — обязательный префикс для nomic-embed.
+- `--header-context` — добавляет «Раздел. Документ.» в текст эмбеддинга (лучше попадание).
+- В Milvus текст хранится **без** префикса; коллекция автоматически делается **Load**.
+
+### 4. Спросить в Attu (строго по правилам)
+1. Вкладка **Agent** → **New Conversation**.
+2. Вопрос, напр.: *«Строго по правилам REDLINE: что грозит за RDM и сколько обороняющихся при штурме с целью спасения? Приведи пункты дословно.»*
+3. **Send** → агент сам делает ~15–20 поисков (vector/BM25) и отвечает **цитатами** из `redline_rules`.
+
+Проверено (реальный ответ агента, Used 17 tool(s)): приведены дословные пункты про RDM (раздел «Термины»),
+правило «не менее 5-6 человек обороны» при штурме-спасении (раздел «Правила штурма») и т.д. — без домыслов.
+
+> Ограничение: модель `nomic-embed` слабее на русском (термины вроде RDM/штурм/КПК находит хорошо,
+> длинные формулировки — хуже). Для лучшего качества по русскому возьмите мультиязычную модель эмбеддингов
+> (bge-m3) и пересоздайте коллекцию тем же скриптом.
+
 ## 9. AI-агент: вопрос по документу текстом (LLM)
 
 Поиск (раздел 6) отдаёт **куски** текста. Если хочешь, чтобы **модель написала ответ** по этим
