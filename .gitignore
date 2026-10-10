@@ -26,3 +26,7 @@ Thumbs.db
 
 # macOS AppleDouble (метаданные, попадают при копировании с mac)
 ._*
+
+tools/blocks.json
+tools/commands.json
+tools/commands_figs.json
