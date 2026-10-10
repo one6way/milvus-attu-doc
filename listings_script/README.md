@@ -12,7 +12,7 @@
 | **А.3** Генератор данных | `A2_A3_collections_and_data.py` | 30 продуктов, 30 проводок, 10 валют, 10 клиентов, 30 счетов, 20 карт | `screens/S04_data_products.png` |
 | **А.4** Эмбеддинги E5 | `A2_A3_collections_and_data.py --embedder e5`, `e5_embed_server.py` | `intfloat/multilingual-e5-base`, префиксы `passage:`/`query:`, dim=768, normalize | `S09_embedding_e5_test.png`, `S10_embedding_providers.png` |
 | **А.5** Поиск / категоризация / аномалии | `A3_A4_A5_embed_search_anomaly.py` | 3.4.1 поиск продуктов с фильтром; 3.4.2 похожие назначения; 3.4.3 аномалии по центроиду (θ = μ−2σ) | `S05_search_products.png`, `S16_search_transactions.png` |
-| **А.6** RBAC и ресурсные группы | `A6_rbac.py` (+ `probe_rbac.py`) | роли `analyst`/`viewer`, юзеры `admin_user`/`analyst_user`/`viewer_user`, группы `rg_high_priority`/`rg_low_priority` | **`screens/S06_users.png`**, **`screens/S07_roles.png`** |
+| **А.6** RBAC и ресурсные группы | `A6_rbac.py`, `A6b_rbac_check.py` (+ `probe_rbac.py`) | роли `analyst`/`viewer`, юзеры `admin_user`/`analyst_user`/`viewer_user`, группы `rg_high_priority`/`rg_low_priority`; проверка доступа реальными данными | **`S06_users.png`**, **`S07_roles.png`**, `S21_role_privileges.png`, `S23_rbac_verification.png` |
 | **А.7** Эксперименты и метрики | `A7_benchmark.py` | efConstruction, ef, индексы, фильтры, метрики (N=50000) | `screens/S08_metrics.png` |
 | Вспомогательное | `common.py`, `selfcheck.py`, `probe_api.py`, `probe_fix.py`, `restore_rg.py`, `make_appendix.py` | харнесс, самопроверка, RBAC-проба, откат ресурсной группы | — |
 
@@ -84,3 +84,10 @@ python .\listings_script\A6_rbac.py
 | `S14_schema_clients.png` | 2.3.2 | схема Clients (+ `_tech_vector`) |
 | `S15_index_products.png` | 2.4 | индексы BankingProducts (HNSW, INVERTED, STL_SORT) |
 | `S16_search_transactions.png` | 3.4.2 | поиск похожих транзакций (E5) |
+| `S17_schema_currencies.png` | 2.3.3 | схема Currencies (`_tech_vector`) |
+| `S18_schema_accounts.png` | 2.3.4 | схема Accounts |
+| `S19_schema_cards.png` | 2.3.5 | схема Cards |
+| `S20_index_transactions.png` | 2.4 | индексы Transactions |
+| `S21_role_privileges.png` | 2.7 / 3.5 | права ролей analyst (+7) и viewer (+2), пользователи, ресурсные группы |
+| `S22_search_tx_anomalies.png` | 3.4.1/3.4.2/3.4.3 | вывод скрипта: поиск продуктов, похожие платежи, аномалии (θ = μ−2σ) |
+| `S23_rbac_verification.png` | 3.5.2 | проверка доступа: viewer/analyst — разрешено/запрещено (все совпало) |
