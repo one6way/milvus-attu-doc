@@ -42,6 +42,18 @@ def make_embedder(base_url, api_key, model, prefix="search_document: "):
     return encode
 
 
+def make_e5_embedder(model_name="intfloat/multilingual-e5-base", prefix="passage: "):
+    """Локальный эмбеддер E5 (как в отчёте, раздел 3.3.1): префикс 'passage: ', normalize=True."""
+    from sentence_transformers import SentenceTransformer
+    print(f"[e5] model={model_name} prefix={prefix!r}", flush=True)
+    model = SentenceTransformer(model_name)
+
+    def encode(texts):
+        vecs = model.encode([prefix + t for t in texts], normalize_embeddings=True, show_progress_bar=False)
+        return [list(map(float, v)) for v in vecs]
+    return encode
+
+
 def build_parser():
     p = argparse.ArgumentParser(description="Банковские коллекции из отчёта -> Milvus.")
     p.add_argument("--api-base", default=os.environ.get("OPENAI_BASE_URL", "http://127.0.0.1:1234/v1"))
@@ -52,6 +64,8 @@ def build_parser():
     p.add_argument("--user", default=os.environ.get("MILVUS_USER", ""))
     p.add_argument("--password", default=os.environ.get("MILVUS_PASSWORD", ""))
     p.add_argument("--recreate", action="store_true")
+    p.add_argument("--embedder", choices=["api", "e5"], default="api",
+                   help="api — OpenAI-совместимый сервер (LM Studio); e5 — локальный intfloat/multilingual-e5-base")
     p.add_argument("--n-products", type=int, default=30)
     p.add_argument("--n-transactions", type=int, default=30)
     p.add_argument("--seed", type=int, default=42)
@@ -225,7 +239,7 @@ def main(argv=None):
     random.seed(args.seed)
     uri = args.host if args.host.startswith("http") else f"http://{args.host}:{args.port}"
     c = MilvusClient(uri=uri, token=(f"{args.user}:{args.password}" if args.user else ""))
-    enc = make_embedder(args.api_base, args.api_key, args.api_model)
+    enc = make_e5_embedder() if args.embedder == "e5" else make_embedder(args.api_base, args.api_key, args.api_model)
 
     if args.recreate:
         for name in VECCOL + REFS:
