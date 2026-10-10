@@ -25,6 +25,47 @@ CODEMARK = {"python", "bash", "yaml", "json", "powershell", "shell", "text", "sq
 MATHSYM = set("=≈≤≥∈·×²√θμσΣ‖∝∫∑")
 CODECHARS = set("=(){}[]<>;")
 
+# эмодзи и служебные символы (❗❕⛔✅✔⚠🔴 и т.п.), но БЕЗ стрелок, тире и матзнаков
+EMOJI_RE = re.compile(
+    "["
+    "\U0001F000-\U0001FAFF"   # эмодзи-блоки
+    "\u2600-\u27BF"           # ☢ ⚔ ✅ ✔ ❗ ❕ ⛔ ⚠ и др.
+    "\u2B00-\u2BFF"           # ⬛⭐ и др.
+    "\u203C\u2049\u2122\u2139"
+    "\uFE0E\uFE0F\u200D"      # вариационные селекторы/ZWJ
+    "\u2753-\u2757"           # ?❗❗
+    "]"
+)
+REDLINE_BILO = re.compile(r"^[\s#\"'\-–—]*(?:БЫЛО)\b", re.S)
+REDLINE_STALO = re.compile(r"^[\s#\"'\-–—]*(?:СТАЛО)\b[^:.!]{0,90}[.:]\s*", re.S)
+WORD_MARK = re.compile(r"\b(?:БЫЛО|СТАЛО)\b")
+
+
+def clean_inline(s):
+    s = EMOJI_RE.sub("", s)
+    s = s.replace("\u00a0", " ").replace("\u2216", "")
+    s = WORD_MARK.sub("", s)
+    s = re.sub(r"\s+([,.;:)])", r"\1", s)
+    s = re.sub(r"[ \t]{2,}", " ", s)
+    return s.strip()
+
+
+def clean_code_line(s):
+    if REDLINE_BILO.match(s):
+        return None                      # строку-маркер БЫЛО выбросить
+    s = EMOJI_RE.sub("", s).replace("\u00a0", " ")
+    s = REDLINE_STALO.sub("", s)
+    s = WORD_MARK.sub("", s)
+    return s.rstrip()
+
+
+def strip_redline(s):
+    """БЫЛО ... -> None (выбросить); СТАЛО (...): текст -> текст."""
+    s = s.strip()
+    if REDLINE_BILO.match(s) or "БЫЛО" in s[:120]:
+        return None
+    return REDLINE_STALO.sub("", s)
+
 FIG = {
     "2.1":  [("S01_cluster_overview.png", "Milvus Standalone v3.0.1 в Attu: режим развёртывания и узлы")],
     "2.3":  [("S02_collections.png", "Список созданных коллекций банковской системы")],
@@ -194,6 +235,43 @@ def col_widths(rows, total=8300):
     return [max(900, int(w * k)) for w in ws]
 
 
+def clean_blocks(blocks):
+    """Убрать разметку правок (БЫЛО/СТАЛО) и эмодзи."""
+    out, dropped = [], 0
+    for b in blocks:
+        t = b["t"]
+        if t in ("p", "caption"):
+            s = strip_redline(b["text"])
+            if s is None:
+                dropped += 1
+                continue
+            s = clean_inline(s)
+            if not s:
+                continue
+            out.append({"t": t, "text": s})
+        elif t in ("h1", "h2", "h3"):
+            out.append({"t": t, "num": b.get("num", ""), "text": clean_inline(b["text"])})
+        elif t == "formula":
+            out.append({"t": "formula", "text": clean_inline(b["text"])})
+        elif t == "code":
+            lines = [x for x in (clean_code_line(l) for l in b["text"].split("\n")) if x is not None]
+            txt = "\n".join(lines).strip("\n")
+            if txt.strip():
+                out.append({"t": "code", "text": txt})
+        elif t == "table":
+            rows = []
+            for r in b["rows"]:
+                cells = []
+                for c in r:
+                    cc = strip_redline(c)
+                    cells.append(clean_inline(cc if cc is not None else ""))
+                rows.append(cells)
+            out.append({"t": "table", "rows": rows})
+        else:
+            out.append(b)
+    return out, dropped
+
+
 def build(blocks):
     cmds, figures = [], []
 
@@ -283,11 +361,37 @@ def run(exe, *args):
     return r
 
 
+def kill_officecli():
+    """Снять resident-процессы OfficeCLI, которые держат файл открытым."""
+    subprocess.run(["taskkill", "/IM", "officecli.exe", "/F"],
+                   capture_output=True, text=True)
+
+
+def pick_out():
+    """Целевой файл; если занят (открыт в Word) — пишем рядом с суффиксом _new."""
+    if os.path.exists(OUT_DOCX):
+        try:
+            os.remove(OUT_DOCX)
+        except PermissionError:
+            alt = OUT_DOCX.replace(".docx", "_new.docx")
+            print("ВНИМАНИЕ: файл занят (открыт в Word) -> результат в", os.path.basename(alt))
+            if os.path.exists(alt):
+                try:
+                    os.remove(alt)
+                except PermissionError:
+                    alt = OUT_DOCX.replace(".docx", "_new2.docx")
+            return alt
+    return OUT_DOCX
+
+
 def main():
     exe = find_officecli()
     print("officecli:", exe)
+    kill_officecli()
 
     blocks = parse()
+    blocks, dropped = clean_blocks(blocks)
+    print("dropped БЫЛО/empty blocks:", dropped)
     from collections import Counter
     print("blocks:", Counter(x["t"] for x in blocks))
     cmds, figures = build(blocks)
@@ -296,15 +400,10 @@ def main():
     cmds_path = os.path.join(WORK, "commands.json")
     io.open(cmds_path, "w", encoding="utf-8").write(json.dumps(cmds, ensure_ascii=False))
 
-    if os.path.exists(OUT_DOCX):
-        try:
-            run(exe, "close", OUT_DOCX)
-        except Exception:
-            pass
-        os.remove(OUT_DOCX)
+    out = pick_out()
 
-    run(exe, "create", OUT_DOCX)
-    r = run(exe, "batch", OUT_DOCX, "--input", cmds_path)
+    run(exe, "create", out)
+    r = run(exe, "batch", out, "--input", cmds_path)
     tail = (r.stdout or "").strip().splitlines()[-1] if r.stdout else ""
     print("batch A:", tail)
     if "0 failed" not in tail:
@@ -312,7 +411,7 @@ def main():
         return 1
 
     # --- phase B: картинки по маркерам (путь по paraId) ---
-    q = run(exe, "query", OUT_DOCX, "paragraph", "--json")
+    q = run(exe, "query", out, "paragraph", "--json")
     data = json.loads(q.stdout)
     by_text = {}
     for item in data.get("data", {}).get("results", []):
@@ -331,16 +430,17 @@ def main():
         bcmds.append({"command": "remove", "path": path + "/r[1]"})
     bp = os.path.join(WORK, "commands_figs.json")
     io.open(bp, "w", encoding="utf-8").write(json.dumps(bcmds, ensure_ascii=False))
-    r = run(exe, "batch", OUT_DOCX, "--input", bp)
+    r = run(exe, "batch", out, "--input", bp)
     tail = (r.stdout or "").strip().splitlines()[-1] if r.stdout else ""
     print("batch B (pictures):", tail)
 
-    run(exe, "save", OUT_DOCX)
-    r = run(exe, "validate", OUT_DOCX)
+    run(exe, "save", out)
+    r = run(exe, "validate", out)
     print("validate:", (r.stdout or "").strip().splitlines()[0] if r.stdout else "?")
-    r = run(exe, "view", OUT_DOCX, "stats")
+    r = run(exe, "view", out, "stats")
     print((r.stdout or "").strip())
-    print("WROTE", OUT_DOCX, os.path.getsize(OUT_DOCX), "bytes")
+    run(exe, "close", out)
+    print("WROTE", out, os.path.getsize(out), "bytes")
     return 0
 
 
