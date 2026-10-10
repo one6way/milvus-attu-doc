@@ -91,3 +91,5 @@ python .\listings_script\A6_rbac.py
 | `S21_role_privileges.png` | 2.7 / 3.5 | права ролей analyst (+7) и viewer (+2), пользователи, ресурсные группы |
 | `S22_search_tx_anomalies.png` | 3.4.1/3.4.2/3.4.3 | вывод скрипта: поиск продуктов, похожие платежи, аномалии (θ = μ−2σ) |
 | `S23_rbac_verification.png` | 3.5.2 | проверка доступа: viewer/analyst — разрешено/запрещено (все совпало) |
+| `S24_resource_groups.png` | 2.8 | ресурсные группы в Attu: `default`, `rg_high_priority`, `rg_low_priority` (Healthy) |
+| `S25_anomaly_lowsim.png` | 3.4.3 | сценарий аномалии: запрос не по теме, низкие score |
