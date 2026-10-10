@@ -514,6 +514,29 @@ python .\scripts\load_jsonl_milvus.py --jsonl .\data\redline_rules.jsonl --colle
 > Гибрид с BM25 закрывает это: точные слова («стороннее ПО», «откат», «RDM», «КПК») находятся всегда.
 > Тяжёлая мультиязычная модель (bge-m3) **не требуется** — достаточно `--bm25`.
 
+## 8б. Банковская система из отчёта (коллекции BankingProducts и др.)
+
+Скрипт создаёт **6 коллекций** из отчёта `otchet.txt` и заливает тестовые данные:
+`BankingProducts` (30 продуктов) и `Transactions` (30 проводок) — с векторами dim=768 (nomic),
+плюс справочники `Currencies` (10), `Clients` (10), `Accounts` (30), `Cards` (20)
+(в них техническое поле `_tech_vector` dim=2 — Milvus не создаёт коллекцию без векторного поля).
+
+```powershell
+python .\scripts\create_banking_collections.py `
+  --api-base http://127.0.0.1:1234/v1 --api-key "<токен LM Studio>" `
+  --api-model text-embedding-nomic-embed-text-v1.5 `
+  --host 127.0.0.1 --port 19530 --user root --password MilvusDemo123 --recreate
+```
+Итог (проверено): 6 коллекций загружены (Loaded), видны в Attu Explorer;
+поиск по `BankingProducts` («выгодный вклад с высокой ставкой») → 10 результатов за 55 ms.
+
+Схемы (по отчёту, с nullable-полями):
+- `BankingProducts`: product_id(PK/auto), product_code, product_name, description, product_type,
+  interest_rate*, term_months*, service_cost*, description_vector(768). Индексы: HNSW/COSINE + INVERTED + STL_SORT.
+- `Transactions`: transaction_id(PK/auto), account_id, card_id*, transaction_date, amount_minor,
+  currency_code, operation_type, purpose*, mcc*, purpose_vector(768). Индексы: HNSW/COSINE + INVERTED×3 + STL_SORT.
+- Справочники — с полем `_tech_vector`(dim=2, FLAT/COSINE); `*` = nullable.
+
 ## 9. AI-агент: вопрос по документу текстом (LLM)
 
 Поиск (раздел 6) отдаёт **куски** текста. Если хочешь, чтобы **модель написала ответ** по этим
