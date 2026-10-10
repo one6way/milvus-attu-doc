@@ -1,0 +1,110 @@
+# Milvus 3.0 (standalone) + Attu 3.0 через Docker Desktop — БЕЗ Kubernetes.
+#
+# Запуск из корня репозитория:
+#   docker compose up -d
+#
+# Доступ:
+#   Attu (веб-UI)   http://127.0.0.1:13000   (Connect: host=milvus, port=19530,
+#                                              User=root, Password=MilvusDemo123)
+#   Milvus (gRPC)   127.0.0.1:19530          (pymilvus / SDK / vectorize_docx.py)
+#   MinIO console   http://127.0.0.1:9001    (опционально, отладка object store)
+#
+# Версии и настройки согласованы с Helm-профилем репозитория (values/milvus.yaml,
+# values/attu.yaml): образ milvusdb/milvus:v3.0.1, message queue = woodpecker
+# (встроенный WAL, Pulsar/Kafka НЕ нужны), авторизация root/MilvusDemo123.
+name: milvus-attu
+
+services:
+  etcd:
+    image: quay.io/coreos/etcd:v3.5.25
+    container_name: milvus-etcd
+    environment:
+      - ETCD_AUTO_COMPACTION_MODE=revision
+      - ETCD_AUTO_COMPACTION_RETENTION=1000
+      - ETCD_QUOTA_BACKEND_BYTES=4294967296
+      - ETCD_SNAPSHOT_COUNT=50000
+    volumes:
+      - etcd-data:/etcd
+    command: etcd -advertise-client-urls=http://etcd:2379 -listen-client-urls http://0.0.0.0:2379 --data-dir /etcd
+    healthcheck:
+      test: ["CMD", "etcdctl", "endpoint", "health"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  minio:
+    image: milvusdb/minio:RELEASE.2024-12-18T13-15-44Z
+    container_name: milvus-minio
+    environment:
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+    ports:
+      - "9001:9001"   # MinIO console (можно убрать)
+      - "9000:9000"   # MinIO API (можно убрать)
+    volumes:
+      - minio-data:/minio_data
+    command: minio server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 30s
+      timeout: 20s
+      retries: 3
+
+  milvus:
+    image: milvusdb/milvus:v3.0.1
+    container_name: milvus-standalone
+    command: ["milvus", "run", "standalone"]
+    security_opt:
+      - seccomp:unconfined
+    environment:
+      ETCD_ENDPOINTS: etcd:2379
+      MINIO_ADDRESS: minio:9000
+      MINIO_REGION: us-east-1
+    volumes:
+      - milvus-data:/var/lib/milvus
+      # Override-конфиг Milvus (авторизация + mq.type=woodpecker), см. комментарий в файле.
+      - ./docker/milvus-user.yaml:/milvus/configs/user.yaml:ro
+    ports:
+      - "19530:19530"   # gRPC/REST: pymilvus / SDK
+      - "9091:9091"     # метрики + /healthz
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
+      interval: 30s
+      start_period: 90s
+      timeout: 20s
+      retries: 3
+    depends_on:
+      etcd:
+        condition: service_started
+      minio:
+        condition: service_started
+
+  attu:
+    image: zilliz/attu:v3.0.1
+    container_name: attu
+    environment:
+      # Имя сервиса внутри docker-сети (НЕ 127.0.0.1 — UI ходит в Milvus изнутри контейнера).
+      MILVUS_ADDRESS: milvus:19530
+      # Креды, которые Attu подставит в дефолтное соединение при первом старте.
+      # Без них (при включённой авторизации Milvus) UI покажет
+      # "UNAUTHENTICATED: missing authorization".
+      MILVUS_USERNAME: root
+      MILVUS_PASSWORD: MilvusDemo123
+      # Первичный администратор Attu (создаётся при первом старте).
+      ATTU_ADMIN_USER: admin
+      ATTU_ADMIN_PASSWORD: AttuDemo123!
+      # Демо: разрешаем LLM/embeddings по приватным адресам (Ollama/LM Studio в LAN).
+      ATTU_SSRF_ALLOW_PRIVATE: "true"
+    ports:
+      - "13000:3000"   # веб-UI: http://127.0.0.1:13000
+    volumes:
+      - attu-data:/data
+    depends_on:
+      milvus:
+        condition: service_started
+
+volumes:
+  etcd-data:
+  minio-data:
+  milvus-data:
+  attu-data:

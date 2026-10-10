@@ -1,0 +1,19 @@
+# Override-конфиг Milvus для docker compose.
+# Монтируется в контейнер как /milvus/configs/user.yaml (см. docker-compose.yml).
+# Milvus мержит его поверх встроенного /milvus/configs/milvus.yaml.
+#
+# Аналогичен extraConfigFiles в values/milvus.yaml (K8s-профиль): авторизация
+# обязательна перед публикацией порта 19530 наружу.
+
+common:
+  security:
+    # Включить авторизацию: без неё любой, кто дошёл до 19530, может
+    # читать/писать/удалять коллекции.
+    authorizationEnabled: true
+    # Пароль root при ПЕРВОЙ инициализации (на пустом volume). Максимум 72 символа.
+    defaultRootPassword: MilvusDemo123
+
+# Встроенный WAL без внешних брокеров (Pulsar/Kafka не нужны).
+# Совпадает со standalone.messageQueue=woodpecker в values/milvus.yaml.
+mq:
+  type: woodpecker
