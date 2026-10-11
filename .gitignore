@@ -30,3 +30,5 @@ Thumbs.db
 tools/blocks.json
 tools/commands.json
 tools/commands_figs.json
+
+deploy-milvus-2.6/volumes/
