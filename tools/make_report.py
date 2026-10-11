@@ -15,9 +15,9 @@ from evidence import inject_evidence  # noqa: E402
 SRC_DEFAULT = os.path.join(ROOT, "milvusattugorobec", "otchet.txt")
 SRC_V3 = os.path.join(ROOT, "report", "otchet_v3.txt")
 SRC = SRC_V3 if os.path.exists(SRC_V3) else SRC_DEFAULT
-SHOTS = os.path.join(ROOT, "screens")
+SHOTS = os.path.join(ROOT, "otchet_main", "screens")
 LS = os.path.join(ROOT, "listings_script")
-OUT_DOCX = os.path.join(ROOT, "ОТЧЁТ_Milvus_банковские_данные.docx")
+OUT_DOCX = os.path.join(ROOT, "otchet_main", "ОТЧЁТ_Milvus_банковские_данные.docx")
 WORK = os.path.join(ROOT, "tools")
 
 H1 = re.compile(r"^(\d+)\.\s+(\S.*)$")

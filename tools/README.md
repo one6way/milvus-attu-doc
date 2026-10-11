@@ -1,7 +1,7 @@
 # tools — сборка Word-отчёта через OfficeCLI
 
 Генерация отчёта `.docx` из исходного текста (`milvusattugorobec/otchet.txt`) и скриншотов
-(`screens/`) с помощью [OfficeCLI](https://github.com/iOfficeAI/OfficeCLI) (iOfficeAI).
+(`otchet_main/screens/`) с помощью [OfficeCLI](https://github.com/iOfficeAI/OfficeCLI) (iOfficeAI).
 
 ## Установка OfficeCLI (Windows)
 
@@ -31,7 +31,7 @@ python tools/make_report.py
 - Текст отчёта: заголовки (Heading1–3), абзацы, подписи таблиц, листинги кода (Consolas).
 - **25 настоящих Word-таблиц** (не текст!): шапка жирным, рамки, автоподбор ширины колонок.
 - **47 формул** — как объекты Equation (OMML), режим display (напр. `||a − b||² = 2 − 2·cos(a, b)`).
-- **24 скриншота** из `screens/` с подписями «Рисунок N — …», привязанные к разделам
+- **24 скриншота** из `otchet_main/screens/` с подписями «Рисунок N — …», привязанные к разделам
   (2.1, 2.3.1–2.3.6, 2.4, 2.7, 2.8, 2.9.1, 3.1, 3.3, 3.4.x, 3.5, 3.6).
 - Приложение А — листинги из `listings_script/`.
 - **Очистка**: разметка правок (**БЫЛО/СТАЛО**) удаляется (блоки «БЫЛО» выбрасываются,
@@ -41,11 +41,11 @@ python tools/make_report.py
 ## Проверка результата
 
 ```powershell
-officecli view "ОТЧЁТ_Milvus_банковские_данные.docx" stats
-officecli query "ОТЧЁТ_Milvus_банковские_данные.docx" table --json      # таблицы
-officecli query "ОТЧЁТ_Milvus_банковские_данные.docx" equation --json   # формулы
-officecli view "ОТЧЁТ_Milvus_банковские_данные.docx" screenshot --page 6 -o page6.png
-officecli view "ОТЧЁТ_Milvus_банковские_данные.docx" screenshot --grid --page 1-70 -o grid.png
+officecli view "otchet_main/ОТЧЁТ_Milvus_банковские_данные.docx" stats
+officecli query "otchet_main/ОТЧЁТ_Milvus_банковские_данные.docx" table --json      # таблицы
+officecli query "otchet_main/ОТЧЁТ_Milvus_банковские_данные.docx" equation --json   # формулы
+officecli view "otchet_main/ОТЧЁТ_Milvus_банковские_данные.docx" screenshot --page 6 -o page6.png
+officecli view "otchet_main/ОТЧЁТ_Milvus_банковские_данные.docx" screenshot --grid --page 1-70 -o grid.png
 ```
 
 ## Соответствие раздел → скриншот
