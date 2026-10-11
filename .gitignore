@@ -32,3 +32,11 @@ tools/commands.json
 tools/commands_figs.json
 
 deploy-milvus-2.6/volumes/
+
+# --- материалы отчёта (в репо не публикуются) ---
+otchet_main/
+report/
+tools/
+listings_script/
+screens/
+milvusattugorobec/

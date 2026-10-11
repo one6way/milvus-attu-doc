@@ -1,4 +1,0 @@
- Container milvus-standalone Running 
- Container attu Running 
- Container milvus-etcd Running 
- Container milvus-minio Running 

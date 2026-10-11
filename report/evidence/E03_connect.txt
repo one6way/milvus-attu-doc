@@ -1,4 +1,0 @@
-<string>:1: PyMilvusDeprecationWarning: `connections.connect` is an ORM-style PyMilvus API and will be removed in PyMilvus 3.1. Use `MilvusClient` instead.
-<string>:1: PyMilvusDeprecationWarning: `utility.get_server_version` is an ORM-style PyMilvus API and will be removed in PyMilvus 3.1. Use `MilvusClient` instead.
-server version: 3.0.1
-collections: ['Accounts', 'BankingProducts', 'Cards', 'Clients', 'Currencies', 'Transactions', 'docs_ft', 'docs_sem', 'docx_fulltext', 'moskva_ft', 'moskva_sem', 'redline_rules', 'voina_i_mir', 'voina_i_mir_ft']

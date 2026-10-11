@@ -1,5 +1,0 @@
-NAME                IMAGE                                         COMMAND                  SERVICE   CREATED          STATUS                    PORTS
-attu                zilliz/attu:v3.0.1                            "docker-entrypoint.s…"   attu      54 seconds ago   Up 53 seconds             0.0.0.0:13000->3000/tcp, [::]:13000->3000/tcp
-milvus-etcd         quay.io/coreos/etcd:v3.5.25                   "etcd -advertise-cli…"   etcd      54 seconds ago   Up 53 seconds (healthy)   2379-2380/tcp
-milvus-minio        milvusdb/minio:RELEASE.2024-12-18T13-15-44Z   "/usr/bin/docker-ent…"   minio     54 seconds ago   Up 53 seconds (healthy)   0.0.0.0:9000-9001->9000-9001/tcp, [::]:9000-9001->9000-9001/tcp
-milvus-standalone   milvusdb/milvus:v3.0.1                        "/tini -- milvus run…"   milvus    54 seconds ago   Up 53 seconds (healthy)   0.0.0.0:9091->9091/tcp, [::]:9091->9091/tcp, 0.0.0.0:19530->19530/tcp, [::]:19530->19530/tcp

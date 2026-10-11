@@ -1,8 +1,0 @@
-Ресурсные группы:
-  __default_resource_group nodes=—
-  rg_high_priority         nodes=—
-  rg_low_priority          nodes=—
-
-Привязка коллекций к группам (collection.resource_groups):
-  Transactions       -> rg_high_priority
-  BankingProducts    -> rg_low_priority
