@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Шаг отчёта §3.6: результаты экспериментов (по данным verify/benchmark_result.json).
+"""Шаг отчёта §3.6: результаты экспериментов (по данным скрипта scripts/A7_benchmark.py).
 
 Запуск:  .venv\\Scripts\\python.exe report\\steps\\S15_metrics.py
 """

@@ -10,17 +10,18 @@
 
 Ключевая деталь методики: эмбеддинги НЕ генерируются. Оценивается индекс и поиск, а не качество
 модели, поэтому используются синтетические векторы размерности 768, нормализованные до единичной
-длины (как их выдаёт intfloat/multilingual-e5-base с normalize_embeddings=True). Это на порядки
+длины (как их выдаёт модель text-embedding-nomic-embed-text-v1.5). Это на порядки
 быстрее и делает замер воспроизводимым.
 
 Ground truth (эталон) — точный поиск FLAT с той же метрикой; Recall@k = |A_approx ∩ A_exact| / k.
 
 Запуск:
-    python .\\verify\\benchmark.py --n 50000 --queries 100 --runs 5 --warmup 20
+    python .\\scripts\\A7_benchmark.py --n 50000 --queries 100 --runs 5 --warmup 20
 Быстрая проверка корректности:
-    python .\\verify\\benchmark.py --n 5000 --queries 20 --runs 1 --warmup 3
+    python .\\scripts\\A7_benchmark.py --n 5000 --queries 20 --runs 1 --warmup 3
 
-Результат: verify/benchmark.log (UTF-8) и verify/benchmark_result.json
+Результат: файл scripts/benchmark_result.json рядом со скриптом (текстовый лог пишет
+вызывающая команда, см. раздел 3.6 отчёта).
 """
 
 from __future__ import annotations

@@ -1,18 +1,19 @@
-"""Проверка раздела 2.5 отчёта: реальная модель intfloat/multilingual-e5-base.
+"""Проверка раздела 2.5 отчёта: реальная модель text-embedding-nomic-embed-text-v1.5.
 
-Проверяем на живом Milvus + реальной модели:
-  * размерность эмбеддинга (768) и единичная норма при normalize_embeddings=True;
-  * префиксы query:/passage: (влияют ли на ранжирование);
+Проверяем на живом Milvus + реальной модели (LM Studio, OpenAI-совместимый API):
+  * размерность эмбеддинга (768) и единичная норма (LM Studio отдаёт нормированные векторы);
+  * префиксы search_query:/search_document: (влияют ли на ранжирование);
   * семантический поиск банковских продуктов с фильтром (раздел 2.9.1/3.4.1);
   * поиск похожих назначений платежей (раздел 3.4.2);
   * центроид транзакций и «аномалия по косинусному расстоянию» (раздел 3.4.3);
   * эквивалентность L2 / IP / COSINE на реальных нормализованных эмбеддингах (3.6.6).
 
-Запуск:  python .\\verify\\probe_embed.py
+Запуск:  python .\\scripts\\A3_A4_A5_embed_search_anomaly.py
 """
 
 from __future__ import annotations
 
+import os
 import sys
 import time
 from pathlib import Path
@@ -21,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from common import DataType, client, drop_if_exists, start_log  # noqa: E402
 
-MODEL_NAME = "intfloat/multilingual-e5-base"
+MODEL_NAME = "text-embedding-nomic-embed-text-v1.5"
 COLL = "probe_embed_products"
 TX = "probe_embed_tx"
 
@@ -59,25 +60,36 @@ def main() -> int:
     start_log(__file__)
     c = client()
 
-    from sentence_transformers import SentenceTransformer
+    import numpy as np
+    import requests
 
-    print(f"\n=== Загрузка модели {MODEL_NAME} ===")
+    API = os.environ.get("EMBED_API", "http://127.0.0.1:1234/v1/embeddings")
+    KEY = os.environ.get("EMBED_KEY", "sk-lm-local")
+
+    print(f"\n=== Модель эмбеддингов {MODEL_NAME} (LM Studio, {API}) ===")
     t0 = time.perf_counter()
-    model = SentenceTransformer(MODEL_NAME)
-    print(f"  загружена за {time.perf_counter() - t0:.1f} c; max_seq_length={model.max_seq_length}")
+
+    def embed(texts):
+        """POST /v1/embeddings -> список numpy-векторов (порядок по index)."""
+        r = requests.post(API, json={"model": MODEL_NAME, "input": texts},
+                          headers={"Authorization": f"Bearer {KEY}"}, timeout=120)
+        r.raise_for_status()
+        data = sorted(r.json()["data"], key=lambda x: x.get("index", 0))
+        return [np.asarray(x["embedding"], dtype="float32") for x in data]
 
     def embed_passage(text: str):
-        return model.encode(f"passage: {text}", normalize_embeddings=True)
+        return embed([f"search_document: {text}"])[0]
 
     def embed_query(text: str):
-        return model.encode(f"query: {text}", normalize_embeddings=True)
+        return embed([f"search_query: {text}"])[0]
 
-    import numpy as np
+    embed(["проверка связи"])
+    print(f"  сервис отвечает за {time.perf_counter() - t0:.1f} c")
 
     v = embed_passage("Выгодный вклад с высокой ставкой")
     print("\n=== 2.5 размерность и норма вектора ===")
     print(f"  shape = {v.shape} (в отчёте заявлено 768)")
-    print(f"  ||v|| = {float(np.linalg.norm(v)):.6f} (normalize_embeddings=True -> 1.0)")
+    print(f"  ||v|| = {float(np.linalg.norm(v)):.6f} (нормированные векторы LM Studio -> 1.0)")
 
     # ---------- Коллекция продуктов + HNSW/COSINE ----------
     drop_if_exists(c, COLL)
@@ -117,8 +129,8 @@ def main() -> int:
     print("\n=== 3.4.1 семантический поиск продуктов ===")
     query = "Выгодный вклад с высокой ставкой и возможностью снятия"
     for label, qvec in (
-        ("С префиксом query: (как в отчёте)", embed_query(query).tolist()),
-        ("БЕЗ префикса", model.encode(query, normalize_embeddings=True).tolist()),
+        ("С префиксом search_query: (как в отчёте)", embed_query(query).tolist()),
+        ("БЕЗ префикса", embed([query])[0].tolist()),
     ):
         res = c.search(collection_name=COLL, data=[qvec], limit=5,
                        output_fields=["product_name", "product_type", "interest_rate"],
@@ -189,7 +201,7 @@ def main() -> int:
     # ---------- 3.6.6 эквивалентность метрик на реальных эмбеддингах ----------
     print("\n=== 3.6.6 L2 / IP / COSINE на реальных нормализованных эмбеддингах ===")
     texts = [p[5] for p in PRODUCTS] + [p[2] for p in PURPOSES]
-    emb = model.encode([f"passage: {t}" for t in texts], normalize_embeddings=True)
+    emb = np.vstack(embed([f"search_document: {t}" for t in texts]))
     query_vec = embed_query("вклад с высокой ставкой")
     tops = {}
     for metric in ("L2", "IP", "COSINE"):

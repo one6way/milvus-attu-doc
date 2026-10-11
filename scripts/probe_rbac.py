@@ -3,7 +3,7 @@
 Прогон на живом Milvus. Фиксируем: какие вызовы из отчёта существуют, какие
 падают, и как та же задача решается на актуальном API.
 
-Запуск:  python .\\verify\\probe_rbac.py
+Запуск:  python .\\scripts\\probe_rbac.py
 """
 
 from __future__ import annotations

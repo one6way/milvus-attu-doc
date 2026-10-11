@@ -6,7 +6,7 @@
   D) эквивалентность L2 / IP / COSINE на нормализованных векторах (раздел 3.6.6);
   E) смена пароля пользователя (раздел 3.1.4).
 
-Запуск:  python .\\verify\\probe_fix.py
+Запуск:  python .\\scripts\\probe_fix.py
 """
 
 from __future__ import annotations

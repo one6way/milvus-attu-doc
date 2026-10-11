@@ -6,7 +6,7 @@
 
 Скрипт пробует несколько способов отката и печатает, какой сработал.
 
-Запуск:  python .\\verify\\restore_rg.py
+Запуск:  python .\\scripts\\restore_rg.py
 """
 
 from __future__ import annotations

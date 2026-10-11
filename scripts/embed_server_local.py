@@ -1,22 +1,26 @@
 # -*- coding: utf-8 -*-
-"""Мини-сервер OpenAI-совместимых эмбеддингов на intfloat/multilingual-e5-base (как в отчёте).
+"""Мини-сервер OpenAI-совместимых эмбеддингов — альтернатива LM Studio.
 
 Зачем: Attu для кнопки "Embed text/image" должен считать вектор ТОЙ ЖЕ моделью,
-что и документы (E5, префикс 'query: '), иначе поиск не совпадёт.
+что и документы (text-embedding-nomic-embed-text-v1.5, префикс 'search_query:'),
+иначе поиск не совпадёт.
+
+Основной путь проекта — LM Studio (раздел 3.3.0 отчёта); этот скрипт нужен, если
+LM Studio недоступен и модель нужно поднять локально из Python.
 
 Эндпоинты: POST /v1/embeddings и POST /embeddings
 Тело:      {"model": "...", "input": "текст" | ["текст", ...]}
 Ответ:     {"object":"list","data":[{"object":"embedding","index":i,"embedding":[...]}], ...}
 
 Запуск:
-  python listings_script/e5_embed_server.py --port 8091
+  python scripts/embed_server_local.py --port 8091
 """
 import argparse, json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 MODEL = None
-MODEL_NAME = "intfloat/multilingual-e5-base"
-PREFIX = "query: "  # Attu шлёт текст запроса -> префикс запроса E5
+MODEL_NAME = "nomic-ai/nomic-embed-text-v1.5"
+PREFIX = "search_query: "  # Attu шлёт текст запроса -> префикс поискового запроса
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -67,9 +71,9 @@ def main():
 
     MODEL_NAME = args.model
     from sentence_transformers import SentenceTransformer
-    print(f"[e5-server] загружаю {MODEL_NAME} ...", flush=True)
-    MODEL = SentenceTransformer(MODEL_NAME)
-    print(f"[e5-server] слушаю 0.0.0.0:{args.port}  (POST /v1/embeddings, prefix={PREFIX!r})", flush=True)
+    print(f"[embed-server] загружаю {MODEL_NAME} ...", flush=True)
+    MODEL = SentenceTransformer(MODEL_NAME, trust_remote_code=True)
+    print(f"[embed-server] слушаю 0.0.0.0:{args.port}  (POST /v1/embeddings, prefix={PREFIX!r})", flush=True)
     ThreadingHTTPServer(("0.0.0.0", args.port), Handler).serve_forever()
 
 

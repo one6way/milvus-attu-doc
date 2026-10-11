@@ -3,7 +3,7 @@
 Каждый блок — код, дословно взятый из отчёта. Задача: показать, что реально
 работает, а что падает (и с какой ошибкой Milvus).
 
-Запуск:  python .\\verify\\probe_api.py
+Запуск:  python .\\scripts\\probe_api.py
 """
 
 from __future__ import annotations
