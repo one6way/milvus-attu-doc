@@ -9,7 +9,12 @@
 import io, json, os, re, shutil, subprocess, sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-SRC = os.path.join(ROOT, "milvusattugorobec", "otchet.txt")
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from evidence import inject_evidence  # noqa: E402
+
+SRC_DEFAULT = os.path.join(ROOT, "milvusattugorobec", "otchet.txt")
+SRC_V3 = os.path.join(ROOT, "report", "otchet_v3.txt")
+SRC = SRC_V3 if os.path.exists(SRC_V3) else SRC_DEFAULT
 SHOTS = os.path.join(ROOT, "screens")
 LS = os.path.join(ROOT, "listings_script")
 OUT_DOCX = os.path.join(ROOT, "ОТЧЁТ_Milvus_банковские_данные.docx")
@@ -340,6 +345,18 @@ def build(blocks):
                 continue
             cmds.append(para(f"Файл: {f}", bold=True, size="10pt"))
             cmds.append(para(io.open(p, encoding="utf-8").read(), font="Consolas", size="7pt"))
+
+    # скрипты-шаги, которыми получены подтверждения в главе 3
+    STEPS = os.path.join(ROOT, "report", "steps")
+    if os.path.isdir(STEPS):
+        cmds.append(para("А.8. Скрипты-шаги (report/steps) — подтверждения главы 3",
+                         style="Heading2"))
+        for f in sorted(os.listdir(STEPS)):
+            if not f.endswith(".py"):
+                continue
+            cmds.append(para(f"Файл: report/steps/{f}", bold=True, size="10pt"))
+            cmds.append(para(io.open(os.path.join(STEPS, f), encoding="utf-8").read(),
+                             font="Consolas", size="7pt"))
     return cmds, figures
 
 
@@ -391,6 +408,7 @@ def main():
 
     blocks = parse()
     blocks, dropped = clean_blocks(blocks)
+    blocks = inject_evidence(blocks)
     print("dropped БЫЛО/empty blocks:", dropped)
     from collections import Counter
     print("blocks:", Counter(x["t"] for x in blocks))

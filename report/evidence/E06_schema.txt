@@ -1,0 +1,25 @@
+=== BankingProducts ===
+  product_id           INT64               PK auto
+  product_code         VARCHAR(20)           
+  product_name         VARCHAR(150)          
+  description          VARCHAR(2000)         
+  product_type         VARCHAR(20)           
+  interest_rate        FLOAT               nullable
+  term_months          INT32               nullable
+  service_cost         FLOAT               nullable
+  description_vector   FLOAT_VECTOR(dim=768)      
+  индексы: description_vector, product_type, interest_rate
+
+=== Transactions ===
+  transaction_id       INT64               PK auto
+  account_id           INT64               
+  card_id              INT64               nullable
+  transaction_date     VARCHAR(19)           
+  amount_minor         INT64               
+  currency_code        VARCHAR(3)            
+  operation_type       VARCHAR(20)           
+  purpose              VARCHAR(500)          nullable
+  mcc                  VARCHAR(4)            nullable
+  purpose_vector       FLOAT_VECTOR(dim=768)      
+  индексы: purpose_vector, account_id, operation_type, mcc, amount_minor
+

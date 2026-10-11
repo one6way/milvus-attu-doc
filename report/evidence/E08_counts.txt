@@ -1,0 +1,7 @@
+коллекция             строк      статус
+BankingProducts          30      Loaded
+Transactions             30      Loaded
+Currencies               10      Loaded
+Clients                  10      Loaded
+Accounts                 30      Loaded
+Cards                    20      Loaded
