@@ -289,6 +289,7 @@ def build(blocks):
     cmds.append(para("", **{}))
 
     tidx = 0
+    fig_no = 0
     for b in blocks:
         t = b["t"]
         if t in ("h1", "h2", "h3"):
@@ -318,7 +319,8 @@ def build(blocks):
                                  "path": f"/body/tbl[{tidx}]/tr[{ri+1}]/tc[{ci+1}]/p[1]",
                                  "props": props})
         elif t == "fig":
-            marker = "FIGMARK::" + os.path.basename(b["file"])
+            marker = b.get("marker") or f"FIGMARK::{fig_no}::{os.path.basename(b['file'])}"
+            fig_no += 1
             cmds.append(para(marker))
             figures.append({"marker": marker, "file": b["file"], "caption": b["caption"],
                             "w": b.get("w", 1200), "h": b.get("h", 800)})

@@ -134,6 +134,16 @@ def _read(p):
     return io.open(fp, encoding="utf-8", errors="replace").read().rstrip()
 
 
+_N = 100000
+
+
+def _seq():
+    """Уникальный номер для маркера картинки (в разных разделах бывают одинаковые имена файлов)."""
+    global _N
+    _N += 1
+    return _N
+
+
 def evidence_blocks(spec):
     out = [{"t": "p", "text": spec["desc"]}]
     for c in spec.get("cmd", []):
@@ -154,7 +164,9 @@ def evidence_blocks(spec):
         fp = os.path.join(ROOT, path.replace("/", os.sep))
         if os.path.exists(fp):
             w, h = png_size(fp)
-            out.append({"t": "fig", "file": fp, "caption": cap, "w": w, "h": h})
+            marker = f"EVFIGMARK::{_seq()}::{os.path.basename(fp)}"
+            out.append({"t": "fig", "file": fp, "caption": cap, "w": w, "h": h,
+                        "marker": marker})
     return out
 
 
