@@ -35,7 +35,7 @@ for r in ["analyst", "viewer"]:
 print()
 
 # запуск штатного скрипта отчёта
-spec = importlib.util.spec_from_file_location("a6", os.path.join(ROOT, "listings_script", "A6_rbac.py"))
+spec = importlib.util.spec_from_file_location("a6", os.path.join(ROOT, "scripts", "A6_rbac.py"))
 a6 = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(a6)
 sys.exit(a6.main())
