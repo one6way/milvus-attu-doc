@@ -40,3 +40,9 @@ tools/
 listings_script/
 screens/
 milvusattugorobec/
+
+# материалы отчёта/демо и временные файлы
+DEMO_RUNBOOK.md
+VIDEO_SCRIPT.md
+img/
+samples/~$*.docx
