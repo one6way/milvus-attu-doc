@@ -31,8 +31,6 @@ tools/blocks.json
 tools/commands.json
 tools/commands_figs.json
 
-deploy-milvus-2.6/volumes/
-
 # --- материалы отчёта (в репо не публикуются) ---
 otchet_main/
 report/
@@ -41,11 +39,13 @@ listings_script/
 screens/
 milvusattugorobec/
 
+# локальный стенд Milvus 2.6 и его volume-данные (в репо не публикуются)
+deploy-milvus-2.6/
+
 # материалы отчёта/демо и временные файлы
 DEMO_RUNBOOK.md
 VIDEO_SCRIPT.md
 img/
-samples/~$*.docx
 
 # архивы с материалами отчёта
 report.zip

@@ -1,7 +1,0 @@
-# Override-конфиг Milvus 2.6.11 для docker compose.
-# Монтируется как /milvus/configs/user.yaml (см. docker-compose.yml).
-# В Milvus 2.6 ключ defaultRootPassword находится ВНУТРИ секции common.security.
-common:
-  security:
-    authorizationEnabled: true
-    defaultRootPassword: MilvusDemo123

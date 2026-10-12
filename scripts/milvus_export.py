@@ -60,7 +60,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     try:
         from pymilvus import MilvusClient
     except ImportError:
-        print("ERROR: нужен pymilvus.  pip install -r scripts/requirements-vectorize.txt", file=sys.stderr)
+        print("ERROR: нужен pymilvus.  pip install pymilvus", file=sys.stderr)
         return 1
 
     fmt = args.format or os.path.splitext(args.out)[1].lstrip(".").lower() or "txt"
@@ -96,7 +96,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         try:
             from docx import Document
         except ImportError:
-            print("ERROR: для docx нужен python-docx.  pip install -r scripts/requirements-vectorize.txt", file=sys.stderr)
+            print("ERROR: для docx нужен python-docx.  pip install python-docx", file=sys.stderr)
             return 1
         doc = Document()
         for r in rows:

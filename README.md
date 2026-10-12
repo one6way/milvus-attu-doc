@@ -1,10 +1,12 @@
 # Milvus + Attu (Windows + Docker Desktop)
 
-Поднять **Milvus 3.0** и **Attu 3.0** одной командой через Docker Desktop и работать с документами Word:
-залить документ, искать (по словам и по смыслу), выгрузить обратно.
+Поднять **Milvus 3.0** и **Attu 3.0** одной командой через Docker Desktop — это стенд для
+отчёта по векторной базе данных в предметной области «Банковские данные»:
+коллекции продуктов и транзакций, семантический поиск, категоризация, выявление аномалий,
+RBAC и ресурсные группы, эксперименты по индексам и метрикам.
 
-> **Пошаговая инструкция «для чайника» → [INSTRUCTION.md](INSTRUCTION.md)**
-> (запуск, вход в Attu, оба варианта заливки, поиск, AI-агент, выгрузка, эталонные экраны).
+> **Пошаговая инструкция → [INSTRUCTION.md](INSTRUCTION.md)**
+> (запуск стенда, вход в Attu, создание коллекций, RBAC, прогон шагов и экспериментов отчёта).
 
 Kubernetes и GitLab **не нужны** — только Docker Desktop.
 
@@ -27,48 +29,29 @@ docker compose ps             # ждать healthy у milvus-standalone (~1-2 м
 |------|------------|
 | `docker-compose.yml` | Milvus 3.0 (standalone) + Attu 3.0 + etcd + MinIO |
 | `docker/milvus-user.yaml` | Override-конфиг Milvus: авторизация + `mq.type=woodpecker` |
-| `scripts/vectorize_docx.py` | `.docx` → коллекция Milvus с эмбеддингами (локальная модель или OpenAI-совместимый API) |
-| `scripts/docx_to_milvus_bm25.py` | `.docx` → коллекция Milvus BM25 (full-text, **без модели**) |
-| `scripts/docx_to_jsonl.py` | `.docx` → JSONL (для ручного Import в Attu) |
-| `scripts/milvus_export.py` | Обратная выгрузка: коллекция Milvus → `.txt` / `.docx` / `.jsonl` |
-| `scripts/requirements-vectorize.txt` | Python-зависимости скриптов |
-| `samples/moskva.docx` | Тестовый документ (МГТУ/«Приоритет 2030») для примеров из инструкции |
-| `samples/voina-i-mir.docx` | Большой тестовый документ («Война и мир») |
-| `samples/file.docx` | Минимальный тестовый `.docx` |
-| `INSTRUCTION.md` | Полная инструкция для новичка |
+| `scripts/` | Скрипты стенда и экспериментов (полный перечень — Приложение Г отчёта) |
+| `scripts/steps/` | Скрипты-шаги главы 3 (подтверждения разделов отчёта) |
+| `scripts/benchmark_result.json` | Результаты замеров для §3.6 (получены `scripts/A7_benchmark.py`) |
+| `INSTRUCTION.md` | Пошаговая инструкция: запуск стенда и прогон всех шагов отчёта |
 
-## Два способа поиска
-
-| Способ | Модель | Ищет | Заливка |
-|--------|--------|------|---------|
-| **BM25 (full-text)** | не нужна | по словам | `docx_to_milvus_bm25.py` |
-| **Семантический** | нужна (эмбеддинги) | по смыслу | `vectorize_docx.py --embedder api` |
+## Банковский стенд из отчёта
 
 ```powershell
-python -m pip install -r .\scripts\requirements-vectorize.txt
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install pymilvus requests
 
-# 1) без модели — поиск по словам
-python .\scripts\docx_to_milvus_bm25.py --file ".\samples\moskva.docx" --collection moskva_ft `
-  --user root --password MilvusDemo123 --recreate
+.\.venv\Scripts\python.exe scripts\create_banking_collections.py --embedder api `
+  --api-base http://127.0.0.1:1234/v1 --api-key "<токен LM Studio>" `
+  --api-model text-embedding-nomic-embed-text-v1.5 --recreate
 
-# 2) с моделью — поиск по смыслу (пример: LM Studio локально, 0 токенов)
-python .\scripts\vectorize_docx.py --file ".\samples\moskva.docx" --collection moskva_sem `
-  --user root --password MilvusDemo123 --embedder api `
-  --api-base http://127.0.0.1:1234/v1 --api-key "<ТОКЕН LM STUDIO>" `
-  --api-model text-embedding-nomic-embed-text-v1.5 --batch 64 --recreate
+.\.venv\Scripts\python.exe scripts\A6_rbac.py
+.\.venv\Scripts\python.exe scripts\steps\S09_search_products.py
+.\.venv\Scripts\python.exe scripts\steps\S10_categorization.py
+.\.venv\Scripts\python.exe scripts\steps\S11_anomalies.py
 ```
 
-> ⚠️ Для семантики нужен сервер с **`/v1/embeddings`** (LM Studio, Ollama, TEI, OpenAI…).
-> Чат-ключ (`/chat/completions`) для поиска не подойдёт — он только для AI-агента.
-
-## Обратная выгрузка (Milvus → файл)
-
-```powershell
-python .\scripts\milvus_export.py --collection moskva_sem --out moskva_back.docx --format docx `
-  --user root --password MilvusDemo123
-```
-Возвращает **текст** чанков в порядке `chunk_index`. Исходная вёрстка Word (картинки, стили,
-таблицы) не сохраняется. В Attu то же можно сделать через меню коллекции → **Export Data** (JSONL/Parquet).
+Коллекции: `BankingProducts`, `Transactions` (векторы dim=768) и справочники
+`Currencies`, `Clients`, `Accounts`, `Cards`. Метрика — `COSINE`, индекс — `HNSW`.
 
 ## Управление
 
