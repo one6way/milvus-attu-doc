@@ -4,7 +4,7 @@
 Подключается под каждым пользователем отчёта и выполняет разрешённые/запрещённые
 операции. Печатает таблицу: пользователь | коллекция | операция | результат.
 
-Запуск:  python listings_script/A6b_rbac_check.py
+Запуск:  python .\scripts\A6b_rbac_check.py
 """
 from __future__ import annotations
 

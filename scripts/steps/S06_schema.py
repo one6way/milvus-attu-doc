@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Шаг отчёта: схема коллекций и индексы (подтверждение §3.2.2–3.2.3).
 
-Запуск:  .venv\\Scripts\\python.exe report\\steps\\S06_schema.py
+Запуск:  .venv\\Scripts\\python.exe scripts\\steps\\S06_schema.py
 """
 from pymilvus import MilvusClient
 

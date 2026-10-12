@@ -6,7 +6,8 @@
 # Доступ:
 #   Attu (веб-UI)   http://127.0.0.1:13000   (Connect: host=milvus, port=19530,
 #                                              User=root, Password=MilvusDemo123)
-#   Milvus (gRPC)   127.0.0.1:19530          (pymilvus / SDK / vectorize_docx.py)
+#   Milvus (gRPC)   127.0.0.1:19530          (pymilvus / SDK / create_banking_collections.py,
+#                                              vectorize_docx.py)
 #   MinIO console   http://127.0.0.1:9001    (опционально, отладка object store)
 #
 # Версии и настройки согласованы с Helm-профилем репозитория (values/milvus.yaml,

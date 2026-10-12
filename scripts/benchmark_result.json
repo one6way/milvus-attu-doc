@@ -1,0 +1,234 @@
+{
+  "config": {
+    "n": 50000,
+    "queries": 100,
+    "runs": 5,
+    "warmup": 20,
+    "intrinsic": 32,
+    "clusters": 100,
+    "keep": false,
+    "dim": 768,
+    "k": 10,
+    "server": "3.0.1"
+  },
+  "insert_seconds": 10.3,
+  "t31_efConstruction": [
+    {
+      "efConstruction": 50,
+      "build_s": 2.2,
+      "load_s": 2.2,
+      "batch_ms": 0.23,
+      "batch_sd": 0.09,
+      "single_ms": 2.5,
+      "recall": 0.615,
+      "recall_sd": 0.0
+    },
+    {
+      "efConstruction": 100,
+      "build_s": 2.8,
+      "load_s": 2.0,
+      "batch_ms": 0.16,
+      "batch_sd": 0.01,
+      "single_ms": 2.62,
+      "recall": 0.747,
+      "recall_sd": 0.0
+    },
+    {
+      "efConstruction": 200,
+      "build_s": 3.7,
+      "load_s": 2.3,
+      "batch_ms": 0.16,
+      "batch_sd": 0.01,
+      "single_ms": 2.59,
+      "recall": 0.825,
+      "recall_sd": 0.0
+    },
+    {
+      "efConstruction": 400,
+      "build_s": 6.2,
+      "load_s": 2.2,
+      "batch_ms": 0.18,
+      "batch_sd": 0.03,
+      "single_ms": 2.76,
+      "recall": 0.908,
+      "recall_sd": 0.0
+    }
+  ],
+  "t32_ef": [
+    {
+      "ef": 16,
+      "batch_ms": 0.12,
+      "batch_sd": 0.02,
+      "single_ms": 2.42,
+      "recall": 0.581,
+      "recall_sd": 0.0
+    },
+    {
+      "ef": 32,
+      "batch_ms": 0.14,
+      "batch_sd": 0.03,
+      "single_ms": 2.49,
+      "recall": 0.727,
+      "recall_sd": 0.0
+    },
+    {
+      "ef": 64,
+      "batch_ms": 0.18,
+      "batch_sd": 0.05,
+      "single_ms": 2.53,
+      "recall": 0.825,
+      "recall_sd": 0.0
+    },
+    {
+      "ef": 128,
+      "batch_ms": 0.2,
+      "batch_sd": 0.03,
+      "single_ms": 2.61,
+      "recall": 0.922,
+      "recall_sd": 0.0
+    },
+    {
+      "ef": 256,
+      "batch_ms": 0.25,
+      "batch_sd": 0.05,
+      "single_ms": 2.65,
+      "recall": 0.978,
+      "recall_sd": 0.0
+    }
+  ],
+  "t34_filters": [
+    {
+      "filter": "без фильтра",
+      "expr": "",
+      "batch_ms": 0.15,
+      "batch_sd": 0.01,
+      "single_ms": 2.49,
+      "recall": 0.825,
+      "recall_sd": 0.0
+    },
+    {
+      "filter": "фильтр по operation_type",
+      "expr": "operation_type == \"purchase\"",
+      "batch_ms": 0.19,
+      "batch_sd": 0.02,
+      "single_ms": 2.82,
+      "recall": 0.916,
+      "recall_sd": 0.0
+    },
+    {
+      "filter": "фильтр по mcc",
+      "expr": "mcc == \"4900\"",
+      "batch_ms": 0.22,
+      "batch_sd": 0.09,
+      "single_ms": 2.8,
+      "recall": 0.923,
+      "recall_sd": 0.0
+    },
+    {
+      "filter": "фильтр по amount_minor > 1 000 000",
+      "expr": "amount_minor > 1000000",
+      "batch_ms": 0.17,
+      "batch_sd": 0.05,
+      "single_ms": 2.49,
+      "recall": 0.864,
+      "recall_sd": 0.0
+    },
+    {
+      "filter": "комбинированный фильтр",
+      "expr": "operation_type == \"purchase\" and mcc == \"4900\" and amount_minor > 1000000",
+      "batch_ms": 0.14,
+      "batch_sd": 0.01,
+      "single_ms": 2.91,
+      "recall": 1.0,
+      "recall_sd": 0.0
+    }
+  ],
+  "t33_indexes": [
+    {
+      "index": "FLAT",
+      "index_type": "FLAT",
+      "build_s": 0.8,
+      "load_s": 2.2,
+      "memory_mb": 185.4,
+      "nprobe": null,
+      "batch_ms": 0.77,
+      "batch_sd": 0.06,
+      "single_ms": 13.75,
+      "recall": 1.0,
+      "recall_sd": 0.0
+    },
+    {
+      "index": "IVF_FLAT (nlist=224, nprobe=16)",
+      "index_type": "IVF_FLAT",
+      "build_s": 2.7,
+      "load_s": 1.9,
+      "memory_mb": 209.9,
+      "nprobe": 16,
+      "batch_ms": 0.22,
+      "batch_sd": 0.03,
+      "single_ms": 2.68,
+      "recall": 0.99,
+      "recall_sd": 0.0
+    },
+    {
+      "index": "HNSW (M=16, efC=200, ef=64)",
+      "index_type": "HNSW",
+      "build_s": 3.7,
+      "load_s": 2.1,
+      "memory_mb": 151.0,
+      "nprobe": null,
+      "batch_ms": 0.17,
+      "batch_sd": 0.03,
+      "single_ms": 2.61,
+      "recall": 0.821,
+      "recall_sd": 0.0
+    },
+    {
+      "index": "IVF_SQ8 (nlist=224, nprobe=16)",
+      "index_type": "IVF_SQ8",
+      "build_s": 2.2,
+      "load_s": 2.0,
+      "memory_mb": 85.5,
+      "nprobe": 16,
+      "batch_ms": 0.14,
+      "batch_sd": 0.01,
+      "single_ms": 2.49,
+      "recall": 0.983,
+      "recall_sd": 0.0
+    }
+  ],
+  "t35_metrics_normalized": [
+    {
+      "metric": "L2",
+      "same_topk_as_cosine": true,
+      "batch_ms": 0.82,
+      "batch_sd": 0.14,
+      "single_ms": 9.13,
+      "recall": 1.0,
+      "recall_sd": 0.0
+    },
+    {
+      "metric": "IP",
+      "same_topk_as_cosine": true,
+      "batch_ms": 0.75,
+      "batch_sd": 0.04,
+      "single_ms": 8.91,
+      "recall": 1.0,
+      "recall_sd": 0.0
+    },
+    {
+      "metric": "COSINE",
+      "same_topk_as_cosine": true,
+      "batch_ms": 0.79,
+      "batch_sd": 0.04,
+      "single_ms": 14.06,
+      "recall": 1.0,
+      "recall_sd": 0.0
+    }
+  ],
+  "metrics_unnormalized": {
+    "n": 5000,
+    "cosine_recall_vs_l2_truth": 0.039,
+    "same_topk": false
+  }
+}

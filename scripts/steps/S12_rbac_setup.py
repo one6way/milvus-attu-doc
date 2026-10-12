@@ -2,9 +2,9 @@
 """Шаг отчёта §3.5.1: чистая настройка RBAC (роли, пользователи) + §3.5.3 (ресурсные группы).
 
 Сначала удаляет прежние роли/пользователи отчёта, затем создаёт заново
-(скрипт listings_script/A6_rbac.py), чтобы вывод был «с нуля».
+(скрипт scripts/A6_rbac.py), чтобы вывод был «с нуля».
 
-Запуск:  .venv\\Scripts\\python.exe report\\steps\\S12_rbac_setup.py
+Запуск:  .venv\\Scripts\\python.exe scripts\\steps\\S12_rbac_setup.py
 """
 import importlib.util
 import os

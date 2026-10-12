@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Шаг отчёта: количество загруженных строк по коллекциям (§3.3.3).
 
-Запуск:  .venv\\Scripts\\python.exe report\\steps\\S08_counts.py
+Запуск:  .venv\\Scripts\\python.exe scripts\\steps\\S08_counts.py
 """
 from pymilvus import MilvusClient
 

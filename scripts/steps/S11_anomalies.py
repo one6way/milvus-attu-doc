@@ -7,15 +7,17 @@
 Запуск:  .venv\\Scripts\\python.exe scripts\\steps\\S11_anomalies.py
 """
 import json
+import os
 import urllib.request
 
 import numpy as np
 from pymilvus import MilvusClient
 
-API = "http://127.0.0.1:1234/v1/embeddings"
-KEY = "sk-lm-STX4hpuF:WyBJuG9KKXe9MCMuTz6s"
+# Провайдер эмбеддингов: LM Studio по умолчанию, переопределяется EMBED_API/EMBED_KEY.
+API = os.environ.get("EMBED_API", "http://127.0.0.1:1234/v1/embeddings")
+KEY = os.environ.get("EMBED_KEY", "sk-lm-local")
 MODEL = "text-embedding-nomic-embed-text-v1.5"
-URI, TOKEN = "http://127.0.0.1:19530", "root:MilvusDemo123"
+URI, TOKEN = "http://127.0.0.1:19530", os.environ.get("MILVUS_TOKEN", "root:MilvusDemo123")
 
 c = MilvusClient(uri=URI, token=TOKEN)
 

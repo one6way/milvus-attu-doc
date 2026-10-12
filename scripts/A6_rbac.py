@@ -11,7 +11,7 @@
 Запуск:
   set MILVUS_HOST=127.0.0.1 & set MILVUS_PORT=19530
   set MILVUS_USER=root & set MILVUS_PASSWORD=MilvusDemo123
-  python listings_script/A6_rbac.py
+  python .\scripts\A6_rbac.py
 """
 from __future__ import annotations
 

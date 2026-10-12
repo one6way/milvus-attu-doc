@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Шаг отчёта §3.5.3: ресурсные группы и их привязка к коллекциям.
 
-Запуск:  .venv\\Scripts\\python.exe report\\steps\\S14_resource_groups.py
+Запуск:  .venv\\Scripts\\python.exe scripts\\steps\\S14_resource_groups.py
 """
 from pymilvus import MilvusClient
 

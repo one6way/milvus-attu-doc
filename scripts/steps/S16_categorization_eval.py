@@ -11,10 +11,13 @@
 Запуск:  .venv\\Scripts\\python.exe scripts\\steps\\S16_categorization_eval.py
 """
 import json
+import os
 import urllib.request
 
-API = "http://127.0.0.1:1234/v1/embeddings"
-KEY = "sk-lm-STX4hpuF:WyBJuG9KKXe9MCMuTz6s"
+# Провайдер эмбеддингов (как в scripts/A3_A4_A5_embed_search_anomaly.py):
+# LM Studio по умолчанию, переопределяется через EMBED_API / EMBED_KEY.
+API = os.environ.get("EMBED_API", "http://127.0.0.1:1234/v1/embeddings")
+KEY = os.environ.get("EMBED_KEY", "sk-lm-local")
 MODEL = "text-embedding-nomic-embed-text-v1.5"
 
 

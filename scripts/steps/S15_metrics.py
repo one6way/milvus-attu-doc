@@ -1,14 +1,19 @@
 # -*- coding: utf-8 -*-
 """Шаг отчёта §3.6: результаты экспериментов (по данным скрипта scripts/A7_benchmark.py).
 
-Запуск:  .venv\\Scripts\\python.exe report\\steps\\S15_metrics.py
+Запуск:  .venv\\Scripts\\python.exe scripts\\steps\\S15_metrics.py
 """
 import io
 import json
 import os
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-SRC = os.path.join(ROOT, "milvusattugorobec", "verify", "benchmark_result.json")
+# результат прогона scripts/A7_benchmark.py; поддерживается и прежний путь
+CANDIDATES = [
+    os.path.join(ROOT, "scripts", "benchmark_result.json"),
+    os.path.join(ROOT, "milvusattugorobec", "verify", "benchmark_result.json"),
+]
+SRC = next((p for p in CANDIDATES if os.path.exists(p)), CANDIDATES[0])
 d = json.load(io.open(SRC, encoding="utf-8"))
 
 cfg = d["config"]
