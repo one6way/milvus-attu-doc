@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Создать банковские коллекции из отчёта и залить тестовые данные.
 
-Коллекции (по otchet.txt / OTCHET_V2.md):
+Коллекции (по отчёту):
   BankingProducts  — продукты (вектор description_vector, dim=768)
   Transactions     — проводки (вектор purpose_vector, dim=768)
   Currencies, Clients, Accounts, Cards — справочники (тех. поле _tech_vector dim=2)
