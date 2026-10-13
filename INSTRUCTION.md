@@ -12,11 +12,14 @@
 Всё проверено на стенде: Windows 11, Docker Desktop 29.8.2, Python 3.11.9,
 Milvus Standalone v3.0.1, pymilvus 3.0.2, модель `text-embedding-nomic-embed-text-v1.5`.
 
+> Незнакомые термины (эмбеддинг, вектор, HNSW, BM25, RRF, ресурсная группа, Centroid) —
+> в глоссарии отчёта, Приложение В. Здесь они только применяются.
+
 **Оглавление**
 
 | § | Шаг | Раздел отчёта |
 |---|---|---|
-| 0 | Требования и проверка окружения | 3.0 |
+| 0 | Требования, что установить (0.1), время (0.2), проверка | 3.0 |
 | 1 | Получить материалы работы | 3.1.1 |
 | 2 | Поднять Milvus и Attu (docker compose) | 3.1.2–3.1.4 |
 | 3 | Веб-интерфейс Attu | 3.1.4 |
@@ -50,18 +53,53 @@ Milvus Standalone v3.0.1, pymilvus 3.0.2, модель `text-embedding-nomic-emb
 | Порты эмбеддингов | **1234** (LM Studio) или **8091** (локальный сервер) | сервис считает векторы |
 | Диск | около 6 ГБ (образы) + 1 ГБ (модель эмбеддингов) | образ Milvus около 3 ГБ |
 | Интернет | на время первой загрузки | `docker compose up` и скачивание модели |
+| Git | для команды `git clone` (или скачать ZIP — см. §1) | §1 |
 
-**Проверка (три команды)**
+### 0.1. Чего может не хватать: что установить
+
+Инструкция начинается с уже установленного окружения. Если чего-то из списка нет,
+поставьте по официальной ссылке (всё бесплатное):
+
+| Что | Где взять | Как проверить, что готово |
+|---|---|---|
+| **Docker Desktop** | <https://www.docker.com/products/docker-desktop/> | `docker version` печатает версию **и** блок `Server` |
+| **Python 3.11** | <https://www.python.org/downloads/windows/> — при установке отметьте **Add python.exe to PATH** | `py -3.11 --version` → `Python 3.11.x` |
+| **Git** | <https://git-scm.com/download/win> (можно не ставить, см. §1) | `git --version` |
+| **LM Studio** | <https://lmstudio.ai/> | окно LM Studio открывается |
+| **WSL 2** — основа Docker Desktop в Windows | `wsl --install` в PowerShell **от имени администратора**, затем перезагрузка | в Docker Desktop внизу слева — **Engine running** |
+
+**Порядок запуска, важный для новичка.** Docker Desktop — это обычное приложение:
+после установки его нужно **запустить** и дождаться, пока внизу окна появится
+*Engine running* (1–2 минуты). До этого любые команды `docker ...` заканчиваются ошибкой
+`error during connect: ... The system cannot find the file specified` — это не поломка
+стенда, а «движок ещё не поднялся».
+
+### 0.2. Сколько времени займёт
+
+| Этап | Время |
+|---|---|
+| установка Docker Desktop / Python / LM Studio | 15–30 минут (один раз) |
+| первая загрузка образов и подъём стенда (§2) | 2–5 минут |
+| Python-окружение и загрузка модели эмбеддингов (§4–§5) | 5–10 минут |
+| данные, RBAC, проверки главы 3 (§6–§9) | 5 минут |
+| эксперименты §3.6 (§10): бенчмарк, затем метрики | 10–15 минут (бенчмарк работает сам), остальное — секунды |
+
+Итого «с нуля» — около часа; из этого времени человек занят примерно 15 минут.
+
+**Проверка (три команды; PowerShell, папку проекта выберем в §1)**
 
 ```powershell
-docker version --format '{{.Server.Version}}'      # Server отвечает: 2x и выше
+docker version --format '{{.Server.Version}}'      # работающий Docker: 2x и выше
 py -3.11 --version                                 # Python 3.11.x
 Get-NetTCPConnection -State Listen -LocalPort 13000,19530,9091,9000,9001 -ErrorAction SilentlyContinue
 ```
 
-Последняя команда должна **ничего не вывести** — порты свободны. Если что-то выводится,
-порт занят: освободите его либо поменяйте левую часть `ports` в `docker-compose.yml`
-(например `"14000:3000"` для Attu) и учтите это во всех командах дальше.
+Ожидаемый результат: первая команда печатает **версию** (если вместо неё ошибка про
+*Engine* — Docker Desktop ещё не запущен, см. §0.1), вторая — `Python 3.11.x`,
+третья — **ничего**. Пустой ответ третьей команды означает, что порты свободны.
+Если же что-то выводится, порт занят: освободите его либо поменяйте левую часть `ports`
+в `docker-compose.yml` (например `"14000:3000"` для Attu) и учтите это во всех командах
+дальше.
 
 ---
 
@@ -70,10 +108,27 @@ Get-NetTCPConnection -State Listen -LocalPort 13000,19530,9091,9000,9001 -ErrorA
 **Зачем.** Все скрипты, конфигурация стенда и инструкция лежат в одном репозитории:
 проверяющему не нужно ничего собирать вручную.
 
+**Что делаем.** Сначала откройте PowerShell и перейдите в папку, где будет лежать проект
+(например, `D:\`). Проще всего: в проводнике открыть диск → правый клик по пустому месту →
+**«Открыть в терминале»** (в Windows 11) или **«Открыть окно PowerShell здесь»** (Windows 10).
+
 ```powershell
 git clone https://github.com/one6way/milvus-attu-doc.git
 cd milvus-attu-doc
 ```
+
+**Если Git не установлен** (команда `git` не найдена) — это не препятствие:
+откройте страницу репозитория <https://github.com/one6way/milvus-attu-doc>,
+нажмите зелёную кнопку **Code → Download ZIP**, распакуйте архив и перейдите в папку:
+
+```powershell
+cd путь\к\распакованной\папке            # например: cd D:\milvus-attu-doc-main
+```
+
+> **Все команды этой инструкции выполняются из корня папки проекта** — там, где лежат
+> `docker-compose.yml` и папка `scripts`. Проверить, что вы в нужном месте:
+> `Get-ChildItem docker-compose.yml` — файл должен найтись. Приглашение командной строки
+> будет начинаться с `PS D:\milvus-attu-doc>` (путь — вашей папки).
 
 **Что внутри** (то же перечислено в Приложении Г отчёта)
 
@@ -106,22 +161,25 @@ Kubernetes и внешняя очередь сообщений не нужны: 
 
 ```powershell
 docker compose up -d            # скачает образы (первый раз 2–5 мин) и запустит 4 контейнера
-docker compose ps               # ждём статус healthy у milvus-standalone
+docker compose ps               # обычная таблица: NAME / IMAGE / STATUS / PORTS
 ```
 
-**Ожидаемый результат.** Четыре строки, у трёх — `(healthy)`:
+**Ожидаемый результат.** В таблице 4 строки; у трёх контейнеров в колонке **STATUS**
+будет `Up ... (healthy)`, у `attu` — просто `Up` (у него нет healthcheck):
 
 ```
-attu|Up ...                                   <- веб-интерфейс
-milvus-etcd|Up ... (healthy)                  <- метаданные
-milvus-minio|Up ... (healthy)                 <- объектное хранилище
-milvus-standalone|Up ... (healthy)            <- сам Milvus
+attu               zilliz/attu:v3.0.1        Up ...                     0.0.0.0:13000->3000/tcp
+milvus-etcd        quay.io/coreos/etcd:...   Up ... (healthy)           2379-2380/tcp
+milvus-minio       milvusdb/minio:...        Up ... (healthy)           9000-9001/tcp
+milvus-standalone  milvusdb/milvus:v3.0.1    Up ... (healthy)           0.0.0.0:19530->19530/tcp
 ```
+
+Если хочется компактно (только имя и статус): `docker compose ps --format "{{.Name}}|{{.Status}}"`.
 
 Дополнительная проверка «живости» (эндпоинт самого Milvus):
 
 ```powershell
-curl http://127.0.0.1:9091/healthz     # ожидаем: OK
+curl.exe http://127.0.0.1:9091/healthz     # ожидаем: OK
 ```
 
 **Почему это правильно.** `docker-compose.yml` монтирует `docker/milvus-user.yaml`,
@@ -172,10 +230,23 @@ docker logs attu --tail 20      # ищем: "[seed] Default connection created: 
 **Что делаем**
 
 ```powershell
-python -m venv .venv
+py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install --upgrade pip
 .\.venv\Scripts\python.exe -m pip install pymilvus==3.0.2 requests numpy python-docx
 ```
+
+**Почему `py -3.11`, а не просто `python`.** На Windows команда `python` часто ведёт к
+заглушке Microsoft Store или к другой версии, поэтому окружение создаётся явным
+запускателем: `py -3.11` (он идёт в комплекте с Python с python.org). Если `py` у вас нет,
+подойдёт `python -m venv .venv` — но тогда сначала убедитесь, что `python --version`
+печатает **3.11.x**, а не открывает Store.
+
+**Активировать окружение не нужно.** Все команды вызывают `python.exe` по полному пути
+(`.\.venv\Scripts\python.exe`) — это короче и не спотыкается о политику выполнения
+скриптов PowerShell. Если вы всё же попробуете активировать окружение
+(`.\.venv\Scripts\Activate.ps1`) и получите ошибку *«выполнение сценариев отключено в этой
+системе»* — это она и есть; можно её не обходить, а просто пользоваться полным путём
+(команды в инструкции уже такие).
 
 **Почему такие версии.**
 
@@ -228,14 +299,29 @@ python -m venv .venv
 1. Установите LM Studio, откройте вкладку поиска моделей и скачайте
    **`text-embedding-nomic-embed-text-v1.5`** (это эмбеддинг-модель, не «болталка»).
 2. Вкладка **Developer → Start Server**, порт **1234**.
-3. Если включён пункт **Require Authentication** — скопируйте выданный токен `sk-lm-…`.
+3. Если нужно, включите авторизацию: в той же вкладке есть переключатель
+   **Require Authentication**, рядом отображается готовый токен `sk-lm-…` с кнопкой
+   копирования (названия пунктов немного отличаются между версиями LM Studio —
+   ориентируйтесь на слово *Authentication* в настройках сервера).
 
 ```powershell
-curl http://127.0.0.1:1234/v1/models      # в ответе должно быть имя модели
+# авторизация в LM Studio включена — передаём токен заголовком:
+curl.exe -H "Authorization: Bearer <токен LM Studio>" http://127.0.0.1:1234/v1/models
+
+# авторизация выключена — заголовок не нужен:
+curl.exe http://127.0.0.1:1234/v1/models
 ```
 
+Ожидаемый ответ — JSON со списком моделей, среди них `text-embedding-nomic-embed-text-v1.5`.
+Если ответ пустой или содержит `Unauthorized` / код `401` — значит авторизация включена,
+а заголовок с токеном не передан (или токен скопирован не полностью).
+
+> **Про `curl` в Windows.** В PowerShell `curl` — это встроенный псевдоним другой команды,
+> поэтому используйте явное имя **`curl.exe`** (или `Invoke-RestMethod`), иначе вывод будет
+> не таким, как в инструкции.
+
 Дальше в командах §6 передайте `--api-base http://127.0.0.1:1234/v1` и, при необходимости,
-`--api-key "<токен LM Studio>"`.
+`--api-key "<токен LM Studio>"`. Если авторизация выключена, `--api-key` можно не указывать.
 
 ### Вариант Б. Локальный сервер эмбеддингов (проверенный резервный путь)
 
@@ -261,7 +347,7 @@ curl http://127.0.0.1:1234/v1/models      # в ответе должно быт�
 **Проверка, что сервис жив и отдаёт 768 компонент:**
 
 ```powershell
-curl http://127.0.0.1:8091/v1/models
+curl.exe http://127.0.0.1:8091/v1/models
 
 .\.venv\Scripts\python.exe -c "import json,urllib.request as u; b=json.dumps({'model':'nomic-ai/nomic-embed-text-v1.5','input':['search_query: вклад']}).encode(); r=u.Request('http://127.0.0.1:8091/v1/embeddings',data=b,headers={'Content-Type':'application/json'}); d=json.loads(u.urlopen(r,timeout=60).read())['data'][0]['embedding']; print('размерность:',len(d),'норма:',round(sum(x*x for x in d)**0.5,6))"
 ```
@@ -330,6 +416,18 @@ $env:EMBED_API = 'http://127.0.0.1:8091/v1/embeddings'
 ```
 
 Вариант Б (локальный сервис): то же, но `--api-base http://127.0.0.1:8091/v1` и без `--api-key`.
+
+> **Про токен: у скриптов разные имена переменных.** `create_banking_collections.py` читает
+> `OPENAI_API_KEY` (и `OPENAI_BASE_URL`), а поисковые шаги `S09`/`S10`/`S11`/`S16` — `EMBED_KEY`
+> (и `EMBED_API`). Чтобы не вставлять токен в каждую команду (и не оставлять его в истории
+> команд), задайте обе переменные один раз за сессию:
+>
+> ```powershell
+> $env:OPENAI_API_KEY = "<токен LM Studio>"   # для загрузки данных (§6)
+> $env:EMBED_KEY      = "<токен LM Studio>"   # для поисковых шагов (§9)
+> ```
+>
+> После этого `--api-key` в командах можно опускать. Проверка: `echo $env:EMBED_KEY`.
 
 **Ожидаемый результат**
 
@@ -414,10 +512,10 @@ $env:EMBED_API = 'http://127.0.0.1:8091/v1/embeddings'
 Флаг `--keep` оставляет коллекцию в Milvus (без него скрипт удаляет её в конце) —
 удобно, чтобы затем посмотреть её в Attu.
 
-**Ожидаемый результат** (фрагмент проверенного прогона)
+**Ожидаемый результат** (фрагмент реального прогона через LM Studio — вариант А)
 
 ```
-модель эмбеддингов: text-embedding-nomic-embed-text-v1.5 (http://127.0.0.1:8091/v1/embeddings)
+модель эмбеддингов: text-embedding-nomic-embed-text-v1.5 (http://127.0.0.1:1234/v1/embeddings)
 сервер Milvus: 3.0.1
 [create] SupportTickets: 12 полей, индексы HNSW/COSINE + SPARSE_INVERTED_INDEX/BM25 + 4 x INVERTED
 [check] длины текстовых полей (байт UTF-8; кириллица = 2 байта на символ):
@@ -433,7 +531,7 @@ $env:EMBED_API = 'http://127.0.0.1:8091/v1/embeddings'
     3.  1.7244 | normal   web         [Переводы             ] Не пришёл перевод через СБП
 
   2) СЕМАНТИЧЕСКИЙ поиск (dense, COSINE): 'не может снять деньги в банкомате'
-    1.  0.8044 | low      atm         [Обслуживание         ] Банкомат не печатает чек
+    1.  0.8019 | low      atm         [Обслуживание         ] Банкомат не печатает чек
     ...
 
 5) СТАТИСТИКА по каналам (query с count(*))
@@ -484,7 +582,7 @@ $env:EMBED_API = 'http://127.0.0.1:8091/v1/embeddings'
 Цель шага — настроить конфигурацию и **доказать её проверкой**: под каждым
 пользователем выполнить и разрешённую, и запрещённую операцию.
 
-**Что делаем** (четыре команды, порядок важен)
+**Что делаем** (три команды, порядок важен)
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\steps\S12_rbac_setup.py    # чистая настройка: роли, пользователи, права
@@ -697,25 +795,32 @@ git checkout -- scripts/benchmark_result.json
 git clone https://github.com/one6way/milvus-attu-doc.git
 cd milvus-attu-doc
 
-# 2) стенд
+# 2) стенд (Docker Desktop должен быть запущен, Engine running)
 docker compose up -d
 docker compose ps                       # ждём healthy у milvus-standalone
-curl http://127.0.0.1:9091/healthz      # OK
+curl.exe http://127.0.0.1:9091/healthz  # OK
 # браузер: http://127.0.0.1:13000  ->  admin / AttuDemo123!
 #          Connect: milvus / 19530 / root / MilvusDemo123
 
 # 3) Python-окружение
-python -m venv .venv
+py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install pymilvus==3.0.2 requests numpy python-docx
 
-# 4) эмбеддинги (вариант А: LM Studio, порт 1234; вариант Б: локально)
+# 4) сервис эмбеддингов (вариант А — LM Studio, как в отчёте)
+#    в LM Studio: Developer -> Start Server (порт 1234), модель nomic-embed-text-v1.5
+curl.exe -H "Authorization: Bearer <токен LM Studio>" http://127.0.0.1:1234/v1/models
+$env:EMBED_KEY = "<токен LM Studio>"     # нужен, если в LM Studio включена авторизация
+
+#    вариант Б (без LM Studio) — раскомментируйте три строки и ОБЯЗАТЕЛЬНО пересоздайте
+#    данные в шаге 5 (иначе векторы и запросы будут от разных сервисов):
 # .\.venv\Scripts\python.exe -m pip install sentence-transformers
 # .\.venv\Scripts\python.exe scripts\embed_server_local.py --port 8091 --prefix=
 # $env:EMBED_API = 'http://127.0.0.1:8091/v1/embeddings'
 
-# 5) данные
+# 5) данные (вариант А: адрес 1234; вариант Б: замените на 8091 и уберите --api-key)
 .\.venv\Scripts\python.exe scripts\create_banking_collections.py --embedder api `
-  --api-base http://127.0.0.1:8091/v1 --api-model text-embedding-nomic-embed-text-v1.5 --recreate
+  --api-base http://127.0.0.1:1234/v1 --api-key "<токен LM Studio>" `
+  --api-model text-embedding-nomic-embed-text-v1.5 --recreate
 
 # 6) новая коллекция обращений + гибридный поиск
 .\.venv\Scripts\python.exe scripts\steps\S18_support_tickets.py --keep
@@ -742,12 +847,24 @@ python -m venv .venv
 docker compose down
 ```
 
+> Сверяйте числа с эталонными из §15: `S09` — `0.7298 / 0.7638 / 0.7944`,
+> `S10` — `0.7434 / 0.8203 / 0.7522`, `S11` — `μ 0.9113 / σ 0.0169 / θ 0.8775`,
+> `S16` — `macro 0.71 / 0.67 / 0.68` (20 из 30). Если у вас другие числа — почти всегда
+> причина в шаге 4: сработал не тот сервис эмбеддингов (см. §5).
+
 ---
 
 ## 12. Если что-то не так (расширенный troubleshooting)
 
 | Симптом | Причина | Что делать |
 |---|---|---|
+| `git : Имя "git" не распознано...` | Git for Windows не установлен | либо поставить Git (<https://git-scm.com/download/win>), либо скачать проект как ZIP — §1 |
+| `python : Имя "python" не распознано...` / открывается Microsoft Store | Python не в PATH либо это заглушка Store | использовать запускатель: `py -3.11 -m venv .venv`; при установке Python отметить *Add python.exe to PATH* |
+| `... Activate.ps1 ... выполнение сценариев отключено в этой системе` | политика выполнения PowerShell | не активировать окружение — вызывать `.\.venv\Scripts\python.exe` напрямую (так во всех командах) |
+| `error during connect: ... The system cannot find the file specified` | Docker Desktop не запущен или ещё не поднял Engine | запустить Docker Desktop и дождаться надписи *Engine running* (1–2 минуты) |
+| `docker: command not found` после установки | Docker Desktop только установлен, но не запущен / нужна перезагрузка | перезапустить систему, затем запустить Docker Desktop |
+| Docker Desktop пишет, что нужен **WSL 2** | подсистема не установлена | `wsl --install` в PowerShell от администратора, затем перезагрузка |
+| `curl` выводит не то, что в инструкции | в PowerShell `curl` — псевдоним другой команды | использовать `curl.exe` (в инструкции уже так) |
 | `UNAUTHENTICATED: missing authorization in header` | креды не переданы: у `MilvusClient` второй позиционный аргумент — `user`, а не токен | передавать именованно: `token="root:MilvusDemo123"` или `user="root", password="MilvusDemo123"` |
 | `Fail connecting to server on 127.0.0.1:19530, illegal connection params or server unavailable` | неверные креды **или** контейнер не поднят | `docker compose ps`; креды `root` / `MilvusDemo123` |
 | `length of varchar field ... exceeds max length` | `max_length` считается в **байтах**; кириллица — 2 байта/символ | увеличить `max_length` (например `VARCHAR(60)` вместо 30) |
@@ -804,7 +921,7 @@ docker compose down -v     # удалить контейнеры И тома —
 | # | Шаг | Признак успеха |
 |---|---|---|
 | 1 | `docker compose ps` | 4 контейнера, у трёх — `(healthy)` |
-| 2 | `curl http://127.0.0.1:9091/healthz` | `OK` |
+| 2 | `curl.exe http://127.0.0.1:9091/healthz` | `OK` |
 | 3 | Attu <http://127.0.0.1:13000> | вход `admin` / `AttuDemo123!`, соединение `milvus:19530` работает |
 | 4 | Проверка Python (§4) | `pymilvus 3.0.2`, `server 3.0.1` |
 | 5 | Сервис эмбеддингов (§5) | `/v1/models` отвечает; эмбеддинг из 768 чисел с нормой 1.0 |
