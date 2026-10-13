@@ -83,7 +83,7 @@ py -3.11 -m venv .venv
    Пошаговая установка, загрузка модели и запуск сервера — §5 в
    [INSTRUCTION.md](INSTRUCTION.md), подразделы **А.1–А.7** (есть и CLI:
    `lms ls` / `lms load` / `lms server status`).
-2. **Локальный сервер** (без отдельного приложения, проверенный резервный путь):
+2. **Локальный сервер** (без отдельного приложения, резервный путь):
 
 ```powershell
 .\.venv\Scripts\python.exe -m pip install sentence-transformers
