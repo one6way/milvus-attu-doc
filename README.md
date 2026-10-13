@@ -80,6 +80,9 @@ py -3.11 -m venv .venv
 
 1. **LM Studio** (как в отчёте): модель `text-embedding-nomic-embed-text-v1.5`,
    сервер на порту `1234`, при *Require Authentication* — токен `sk-lm-…`.
+   Пошаговая установка, загрузка модели и запуск сервера — §5 в
+   [INSTRUCTION.md](INSTRUCTION.md), подразделы **А.1–А.7** (есть и CLI:
+   `lms ls` / `lms load` / `lms server status`).
 2. **Локальный сервер** (без отдельного приложения, проверенный резервный путь):
 
 ```powershell
