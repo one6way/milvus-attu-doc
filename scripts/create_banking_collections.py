@@ -44,10 +44,16 @@ def make_embedder(base_url, api_key, model, prefix="search_document: "):
 
 def make_local_embedder(model_name="nomic-ai/nomic-embed-text-v1.5", prefix="search_document: "):
     """Локальный эмбеддер на sentence-transformers — альтернатива LM Studio:
-    префикс 'search_document: ' и нормировка векторов (как у модели nomic)."""
+    префикс 'search_document: ' и нормировка векторов (как у модели nomic).
+
+    trust_remote_code НЕ используется: архитектура nomic-bert поддержана
+    в transformers нативно (>=4.48), а поставляемый моделью remote-код
+    рассчитан на transformers 4.x и падает на 5.x
+    ('NomicBertModel' object has no attribute 'get_extended_attention_mask').
+    """
     from sentence_transformers import SentenceTransformer
     print(f"[local] model={model_name} prefix={prefix!r}", flush=True)
-    model = SentenceTransformer(model_name, trust_remote_code=True)
+    model = SentenceTransformer(model_name)
 
     def encode(texts):
         vecs = model.encode([prefix + t for t in texts], normalize_embeddings=True, show_progress_bar=False)
@@ -62,8 +68,8 @@ def build_parser():
     p.add_argument("--api-model", default="text-embedding-nomic-embed-text-v1.5")
     p.add_argument("--host", default=os.environ.get("MILVUS_HOST", "127.0.0.1"))
     p.add_argument("--port", default=os.environ.get("MILVUS_PORT", "19530"))
-    p.add_argument("--user", default=os.environ.get("MILVUS_USER", ""))
-    p.add_argument("--password", default=os.environ.get("MILVUS_PASSWORD", ""))
+    p.add_argument("--user", default=os.environ.get("MILVUS_USER", "root"))
+    p.add_argument("--password", default=os.environ.get("MILVUS_PASSWORD", "MilvusDemo123"))
     p.add_argument("--recreate", action="store_true")
     p.add_argument("--embedder", choices=["api", "local"], default="api",
                    help="api — LM Studio / OpenAI-совместимый сервер; local — локальная модель sentence-transformers")

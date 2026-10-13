@@ -44,9 +44,19 @@ def run(c, coll, op):
             c.search(coll, data=[[0.0] * 768], anns_field=("description_vector" if coll == "BankingProducts" else "purpose_vector"),
                      limit=1)
         elif op == "insert":
-            c.insert(coll, [{"account_id": 1, "card_id": 1, "transaction_date": "2025-01-01T00:00:00",
-                             "amount_minor": 1, "currency_code": "RUB", "operation_type": "credit",
-                             "purpose": "probe", "mcc": "0000", "purpose_vector": [0.0] * 768}])
+            res = c.insert(coll, [{"account_id": 1, "card_id": 1,
+                                   "transaction_date": "2025-01-01T00:00:00",
+                                   "amount_minor": 1, "currency_code": "RUB",
+                                   "operation_type": "credit", "purpose": "probe",
+                                   "mcc": "0000", "purpose_vector": [0.0] * 768}])
+            # Проверка права Insert не должна портить рабочие данные: сразу удаляем
+            # вставленную строку (носитель нулевого вектора иначе попадёт в статистику
+            # S08 и в список «аномалий» S11 как cos = 0.0000).
+            try:
+                c.delete(coll, ids=list(res.get("ids") or []))
+                c.flush(coll)
+            except Exception:  # noqa: BLE001 — уборка не влияет на результат проверки
+                pass
         elif op == "create_collection":
             c.create_collection("probe_rbac_tmp")
             c.drop_collection("probe_rbac_tmp")

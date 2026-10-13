@@ -13,9 +13,12 @@ for rg in c.list_resource_groups():
     try:
         d = c.describe_resource_group(name=rg)
     except Exception:
-        d = {}
-    nodes = d.get("num_nodes", d.get("nodes", "—")) if isinstance(d, dict) else "—"
-    print(f"  {rg:<24} nodes={nodes}")
+        d = None
+    # describe_resource_group возвращает объект ResourceGroupInfo:
+    # берём атрибуты (а не dict.get), иначе выводится «—»
+    avail = getattr(d, "num_available_node", "—") if d is not None else "—"
+    cap = getattr(d, "capacity", "—") if d is not None else "—"
+    print(f"  {rg:<24} доступно узлов={avail}  ёмкость={cap}")
 
 print("\nПривязка коллекций к группам (collection.resource_groups):")
 for coll in ["Transactions", "BankingProducts"]:

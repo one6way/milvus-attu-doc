@@ -12,8 +12,15 @@ LM Studio недоступен и модель нужно поднять лок�
 Тело:      {"model": "...", "input": "текст" | ["текст", ...]}
 Ответ:     {"object":"list","data":[{"object":"embedding","index":i,"embedding":[...]}], ...}
 
+Префикс (--prefix) сервер добавляет к каждому тексту сам:
+  * "search_query: " (по умолчанию) — для кнопки Attu «Embed text»;
+  * ""                     — когда префикс задаёт вызывающая сторона
+                             (скрипты отчёта S09/S10/S11/S16 и A3..A5
+                              сами добавляют search_query:/search_document:).
+
 Запуск:
   python scripts/embed_server_local.py --port 8091
+  python scripts/embed_server_local.py --port 8091 --prefix ""
 """
 import argparse, json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -63,16 +70,22 @@ class Handler(BaseHTTPRequestHandler):
 
 
 def main():
-    global MODEL, MODEL_NAME
+    global MODEL, MODEL_NAME, PREFIX
     ap = argparse.ArgumentParser()
     ap.add_argument("--port", type=int, default=8091)
     ap.add_argument("--model", default=MODEL_NAME)
+    ap.add_argument("--prefix", default=PREFIX,
+                    help="префикс, добавляемый сервером к каждому тексту "
+                         "(пустая строка — если префикс задаёт вызывающая сторона)")
     args = ap.parse_args()
 
     MODEL_NAME = args.model
+    PREFIX = args.prefix
     from sentence_transformers import SentenceTransformer
+    # trust_remote_code не нужен: nomic-bert поддержан в transformers (>=4.48) нативно,
+    # а remote-код модели рассчитан на transformers 4.x и на 5.x падает.
     print(f"[embed-server] загружаю {MODEL_NAME} ...", flush=True)
-    MODEL = SentenceTransformer(MODEL_NAME, trust_remote_code=True)
+    MODEL = SentenceTransformer(MODEL_NAME)
     print(f"[embed-server] слушаю 0.0.0.0:{args.port}  (POST /v1/embeddings, prefix={PREFIX!r})", flush=True)
     ThreadingHTTPServer(("0.0.0.0", args.port), Handler).serve_forever()
 

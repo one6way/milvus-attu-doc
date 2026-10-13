@@ -1,55 +1,303 @@
-# Milvus + Attu — инструкция: стенд для отчёта (Windows + Docker Desktop)
+# Milvus + Attu: практическая часть работы — руководство проверяющего
 
-Пошагово: от чистой машины до работающего поиска по банковским данным — те же шаги,
-которые подтверждают разделы главы 3 отчёта.
+Пошаговое руководство, по которому **другой человек** может развернуть стенд с нуля,
+загрузить банковские данные, прогнать все эксперименты и убедиться, что результаты
+воспроизводятся. Каждый шаг описан по схеме:
 
-## 0. Что понадобится
+* **Зачем** — какую задачу решает шаг и с каким разделом отчёта он связан;
+* **Что делаем** — команда (Windows PowerShell, из корня репозитория);
+* **Ожидаемый результат** — что должно появиться на экране / в браузере;
+* **Если не так** — типичная причина (подробнее — §12).
 
-- **Windows 10/11** и **Docker Desktop** (запущен, Linux containers)
-- **Python 3.10+** — для скриптов стенда
-- **Сервис эмбеддингов** с OpenAI-совместимым `/v1/embeddings` (LM Studio, TEI, Ollama…)
-- Свободные порты: **13000** (Attu), **19530** (Milvus gRPC), **9000/9001** (MinIO), **9091** (healthz)
-- Интернет на первую загрузку образов (~1.3 ГБ)
+Всё проверено на стенде: Windows 11, Docker Desktop 29.8.2, Python 3.11.9,
+Milvus Standalone v3.0.1, pymilvus 3.0.2, модель `text-embedding-nomic-embed-text-v1.5`.
 
-Kubernetes и GitLab не нужны — только Docker Desktop.
+**Оглавление**
 
-## 1. Получить репозиторий
+| § | Шаг | Раздел отчёта |
+|---|---|---|
+| 0 | Требования и проверка окружения | 3.0 |
+| 1 | Получить материалы работы | 3.1.1 |
+| 2 | Поднять Milvus и Attu (docker compose) | 3.1.2–3.1.4 |
+| 3 | Веб-интерфейс Attu | 3.1.4 |
+| 4 | Python-окружение | 3.1.5 |
+| 5 | Сервис эмбеддингов (LM Studio или локальный) | 3.3.0 |
+| 6 | Создать коллекции и загрузить данные | 3.2, 3.3.2–3.3.3 |
+| 7 | **Новая коллекция обращений `SupportTickets` + гибридный поиск** | доп. шаг (S18) |
+| 8 | Роли, пользователи, ресурсные группы | 3.5 |
+| 9 | Шаги, подтверждающие главу 3 | 3.2–3.4 |
+| 10 | Эксперименты §3.6 (бенчмарк, метрики, категоризация) | 3.6 |
+| 11 | Шпаргалка: полная последовательность копипастом | 3.1.5 |
+| 12 | Если что-то не так (расширенный troubleshooting) | 3.1.7 |
+| 13 | Остановка, перезапуск, полная очистка | 3.1.6 |
+| 14 | Чек-лист проверяющего | — |
+| 15 | Эталонные значения и допустимый разброс | 3.6.0 |
+
+---
+
+## 0. Требования и проверка окружения
+
+**Зачем.** Стенд состоит из четырёх контейнеров и внешнего сервиса эмбеддингов.
+Если заранее проверить версии и порты, большинство проблем «на старте» не возникнет.
+
+| Компонент | Требование | Зачем именно так |
+|---|---|---|
+| ОС | Windows 10/11 x64 | в работе использован Docker Desktop для Windows |
+| Docker Desktop | запущен, Linux containers | Milvus поставляется только как Linux-контейнер |
+| Память для Docker | не менее 6 ГБ (Settings → Resources) | Milvus standalone + etcd + MinIO + Attu |
+| Python | 3.11 (достаточно 3.10+) | версии pymilvus / sentence-transformers подобраны под 3.11 |
+| Свободные порты | **13000, 19530, 9091, 9000, 9001** | Attu, gRPC Milvus, healthz, MinIO |
+| Порты эмбеддингов | **1234** (LM Studio) или **8091** (локальный сервер) | сервис считает векторы |
+| Диск | около 6 ГБ (образы) + 1 ГБ (модель эмбеддингов) | образ Milvus около 3 ГБ |
+| Интернет | на время первой загрузки | `docker compose up` и скачивание модели |
+
+**Проверка (три команды)**
+
+```powershell
+docker version --format '{{.Server.Version}}'      # Server отвечает: 2x и выше
+py -3.11 --version                                 # Python 3.11.x
+Get-NetTCPConnection -State Listen -LocalPort 13000,19530,9091,9000,9001 -ErrorAction SilentlyContinue
+```
+
+Последняя команда должна **ничего не вывести** — порты свободны. Если что-то выводится,
+порт занят: освободите его либо поменяйте левую часть `ports` в `docker-compose.yml`
+(например `"14000:3000"` для Attu) и учтите это во всех командах дальше.
+
+---
+
+## 1. Получить материалы работы
+
+**Зачем.** Все скрипты, конфигурация стенда и инструкция лежат в одном репозитории:
+проверяющему не нужно ничего собирать вручную.
 
 ```powershell
 git clone https://github.com/one6way/milvus-attu-doc.git
 cd milvus-attu-doc
 ```
 
+**Что внутри** (то же перечислено в Приложении Г отчёта)
+
+| Путь | Назначение |
+|---|---|
+| `docker-compose.yml` | Milvus v3.0.1 (standalone) + Attu v3.0.1 + etcd + MinIO |
+| `docker/milvus-user.yaml` | override-конфиг Milvus: включённая авторизация, `mq.type=woodpecker` |
+| `scripts/create_banking_collections.py` | создание шести коллекций, генерация данных, расчёт эмбеддингов |
+| `scripts/A6_rbac.py`, `scripts/A6b_rbac_check.py` | настройка RBAC и проверка доступа |
+| `scripts/A7_benchmark.py` | эксперименты §3.6 (efConstruction, ef, индексы, фильтры, метрики) |
+| `scripts/embed_server_local.py` | локальный сервис эмбеддингов (если нет LM Studio) |
+| `scripts/steps/S06…S17*.py` | точечные проверки разделов главы 3 |
+| `scripts/steps/S18_support_tickets.py` | **дополнительный шаг**: коллекция обращений + BM25/гибридный поиск |
+| `scripts/benchmark_result.json` | эталонные замеры §3.6 (его читает `S15_metrics.py`) |
+| `INSTRUCTION.md` | этот файл |
+
+**Ожидаемый результат.** `Get-ChildItem scripts -Recurse -Filter *.py` — 23 файла
+(22 из Приложения Г плюс `S18_support_tickets.py`).
+
+---
+
 ## 2. Поднять Milvus и Attu
 
+**Зачем.** Milvus — это векторная база; Attu — веб-интерфейс к ней. В работе
+используется Milvus **v3.0.1 в режиме standalone**: одного контейнера Milvus достаточно
+для всех сценариев (семантический поиск, RBAC, ресурсные группы, замеры).
+Kubernetes и внешняя очередь сообщений не нужны: `mq.type=woodpecker` — встроенный WAL.
+
+**Что делаем**
+
 ```powershell
-docker compose up -d
-docker compose ps                    # ждать healthy у milvus-standalone (1-2 мин)
-curl http://127.0.0.1:9091/healthz   # ответ: OK
+docker compose up -d            # скачает образы (первый раз 2–5 мин) и запустит 4 контейнера
+docker compose ps               # ждём статус healthy у milvus-standalone
 ```
 
-## 3. Зайти в Attu
+**Ожидаемый результат.** Четыре строки, у трёх — `(healthy)`:
 
-Откройте <http://127.0.0.1:13000>, вход `admin` / `AttuDemo123!`.
-Затем **Connect**: host `milvus`, port `19530`, user `root`, password `MilvusDemo123`.
+```
+attu|Up ...                                   <- веб-интерфейс
+milvus-etcd|Up ... (healthy)                  <- метаданные
+milvus-minio|Up ... (healthy)                 <- объектное хранилище
+milvus-standalone|Up ... (healthy)            <- сам Milvus
+```
+
+Дополнительная проверка «живости» (эндпоинт самого Milvus):
+
+```powershell
+curl http://127.0.0.1:9091/healthz     # ожидаем: OK
+```
+
+**Почему это правильно.** `docker-compose.yml` монтирует `docker/milvus-user.yaml`,
+в котором включена авторизация (`authorizationEnabled: true`, пароль root
+`MilvusDemo123`). Именно поэтому дальше **везде** требуются логин и пароль —
+именно так работает стенд из отчёта (раздел 3.1), а не «голый» Milvus без пароля.
+
+**Если не так.** `milvus-standalone` долго не становится `healthy` — увеличьте память
+Docker Desktop (≥ 6 ГБ) и посмотрите логи: `docker compose logs milvus-standalone --tail 100`.
+
+---
+
+## 3. Веб-интерфейс Attu
+
+**Зачем.** Attu нужен, чтобы **увидеть** коллекции, схему, индексы, данные, роли и
+ресурсные группы без Python: это независимая проверка того, что скрипты сделали.
+
+**Что делаем**
+
+1. Откройте в браузере <http://127.0.0.1:13000> (без авторизации корень делает
+   редирект на страницу входа; запросы без браузера получают `401`, это нормально).
+2. Войдите как администратор Attu: **`admin` / `AttuDemo123!`**.
+3. Создайте/выберите соединение с Milvus:
+   * **Host**: `milvus` (имя сервиса внутри docker-сети, **не** `127.0.0.1`)
+   * **Port**: `19530`
+   * **User**: `root`, **Password**: `MilvusDemo123`
+
+**Ожидаемый результат.** Пустой список коллекций (данные появятся после §6).
+Логи контейнера подтверждают, что дефолтное соединение и админ созданы:
+
+```powershell
+docker logs attu --tail 20      # ищем: "[seed] Default connection created: milvus:19530"
+```
+
+**Если не так.** Ошибка `UNAUTHENTICATED: missing authorization` в Attu означает,
+что соединение создано без логина/пароля — пересоздайте его с `root` / `MilvusDemo123`.
+Ошибка `failed to connect` — проверьте, что контейнер `milvus-standalone` в статусе `healthy`.
+
+---
 
 ## 4. Python-окружение
 
+**Зачем.** Все проверки выполняются скриптами на Python: они создают коллекции,
+считают эмбеддинги, настраивают RBAC и измеряют производительность.
+Отдельное виртуальное окружение нужно, чтобы версии библиотек не конфликтовали
+с другими проектами на машине.
+
+**Что делаем**
+
 ```powershell
 python -m venv .venv
-.\.venv\Scripts\python.exe -m pip install pymilvus requests
+.\.venv\Scripts\python.exe -m pip install --upgrade pip
+.\.venv\Scripts\python.exe -m pip install pymilvus==3.0.2 requests numpy python-docx
 ```
 
-## 5. Сервис эмбеддингов (LM Studio)
+**Почему такие версии.**
 
-1. Загрузите модель **`text-embedding-nomic-embed-text-v1.5`** (размерность 768).
-2. Вкладка **Developer/Server** → **Start Server**, порт **1234**.
-3. Проверка: `curl http://127.0.0.1:1234/v1/models`.
-4. Если включён **Require Authentication** — скопируйте токен `sk-lm-…` и передавайте его
-   через `--api-key` либо через переменную окружения `EMBED_KEY`
-   (скрипты читают `EMBED_API` / `EMBED_KEY`; для Milvus — `MILVUS_URI` / `MILVUS_TOKEN`).
+* `pymilvus==3.0.2` — версия из отчёта и из Приложения Г; она совместима с сервером
+  Milvus 3.0.1 и поддерживает `Function(BM25)`, `hybrid_search`, `RRFRanker` (нужны в §7).
+* `requests`, `numpy` — HTTP-вызовы эмбеддингов и векторная арифметика (центроид, нормы).
+* `python-docx` — нужен только для необязательной выгрузки `milvus_export.py`.
 
-## 6. Создать коллекции и залить данные
+Если планируете пользоваться **локальным** сервисом эмбеддингов (§5, вариант Б),
+дополнительно:
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install sentence-transformers
+```
+
+**Ожидаемый результат.** Проверка импортов и подключения к Milvus:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import pymilvus, numpy; print('pymilvus', pymilvus.__version__)"
+
+.\.venv\Scripts\python.exe -c "from pymilvus import MilvusClient; c=MilvusClient(uri='http://127.0.0.1:19530', token='root:MilvusDemo123'); print('server', c.get_server_version())"
+```
+
+Вторая команда должна напечатать `server 3.0.1`.
+
+**Важно (частая ошибка).** У `MilvusClient` вторым позиционным аргументом идёт `user`,
+а не токен: `MilvusClient('http://127.0.0.1:19530', 'root:MilvusDemo123')` даст
+`UNAUTHENTICATED: missing authorization in header`. Передавайте креды **именованно**:
+`token="root:MilvusDemo123"` либо `user="root", password="MilvusDemo123"`.
+
+---
+
+## 5. Сервис эмбеддингов: выбрать один из двух вариантов
+
+**Зачем.** Milvus хранит и ищет векторы, но **не считает** их: тексты превращает во
+векторы внешняя модель. Во всех сценариях используется одна и та же модель —
+`text-embedding-nomic-embed-text-v1.5`, размерность **768** (разделы 2.5, 3.3.0 отчёта).
+Важно, чтобы **и данные, и запросы** считала одна модель: иначе векторы попадут в
+разные участки пространства и поиск «не найдёт» ничего осмысленного.
+
+| Вариант | Когда выбирать | Модель считает |
+|---|---|---|
+| **А. LM Studio** | как в отчёте (раздел 3.3.0) | отдельное приложение по адресу `127.0.0.1:1234` |
+| **Б. Локальный сервер** | если LM Studio недоступен/не подходит | тот же набор весов через `sentence-transformers`, порт `8091` |
+
+Оба варианта дают HTTP API, совместимый с OpenAI (`POST /v1/embeddings`, `GET /v1/models`).
+
+### Вариант А. LM Studio (основной путь отчёта)
+
+1. Установите LM Studio, откройте вкладку поиска моделей и скачайте
+   **`text-embedding-nomic-embed-text-v1.5`** (это эмбеддинг-модель, не «болталка»).
+2. Вкладка **Developer → Start Server**, порт **1234**.
+3. Если включён пункт **Require Authentication** — скопируйте выданный токен `sk-lm-…`.
+
+```powershell
+curl http://127.0.0.1:1234/v1/models      # в ответе должно быть имя модели
+```
+
+Дальше в командах §6 передайте `--api-base http://127.0.0.1:1234/v1` и, при необходимости,
+`--api-key "<токен LM Studio>"`.
+
+### Вариант Б. Локальный сервер эмбеддингов (проверенный резервный путь)
+
+**Зачем.** Ровно те же веса модели, но без отдельного приложения: удобно, когда
+нужна воспроизводимость «в один терминал». Сервер реализован в
+`scripts/embed_server_local.py`.
+
+```powershell
+.\.venv\Scripts\python.exe scripts\embed_server_local.py --port 8091 --prefix=
+```
+
+Первая строка загрузки модели занимает около 10 секунд, затем сервер печатает
+`[embed-server] слушаю 0.0.0.0:8091`.
+
+**Почему `--prefix=` (пусто).** Сервисы эмбеддингов умеют добавлять к тексту префикс
+инструкции: у модели nomic это `search_document: ` для документов и `search_query: `
+для запросов. Скрипты отчёта (`S09`, `S10`, `S11`, `S16`, `A3_A4_A5`) **сами**
+подставляют нужный префикс, поэтому на сервере его нужно отключить, иначе получится
+двойной префикс и другой вектор. Если же вы подключаете к серверу **Attu** (кнопка
+«Embed text»), то она префикс не добавляет — для этого случая сервер по умолчанию
+работает с `--prefix "search_query: "`.
+
+**Проверка, что сервис жив и отдаёт 768 компонент:**
+
+```powershell
+curl http://127.0.0.1:8091/v1/models
+
+.\.venv\Scripts\python.exe -c "import json,urllib.request as u; b=json.dumps({'model':'nomic-ai/nomic-embed-text-v1.5','input':['search_query: вклад']}).encode(); r=u.Request('http://127.0.0.1:8091/v1/embeddings',data=b,headers={'Content-Type':'application/json'}); d=json.loads(u.urlopen(r,timeout=60).read())['data'][0]['embedding']; print('размерность:',len(d),'норма:',round(sum(x*x for x in d)**0.5,6))"
+```
+
+Ожидаем `размерность: 768 норма: 1.0` — модель нормирует векторы, поэтому косинусная
+близость и скалярное произведение согласованы (это проверяется в §10).
+
+**Техническое замечание (почему не `trust_remote_code=True`).** Модель `nomic-embed-text-v1.5`
+привычно грузят с `trust_remote_code=True`. Этот режим исполняет код из репозитория модели,
+написанный под `transformers` 4.x; на актуальном `transformers` 5.x он падает с
+`'NomicBertModel' object has no attribute 'get_extended_attention_mask'`.
+Архитектура `nomic-bert` поддержана в `transformers` **нативно** (с 4.48), поэтому в скриптах
+используется обычная загрузка `SentenceTransformer("nomic-ai/nomic-embed-text-v1.5")` без
+`trust_remote_code` — результат тот же (768 компонент, единичные нормы), но без лишних
+зависимостей.
+
+**Как скрипты узнают адрес сервиса.** По умолчанию все шаги обращаются к LM Studio
+(`http://127.0.0.1:1234/v1/embeddings`). Для варианта Б задайте переменную окружения
+в текущей сессии PowerShell:
+
+```powershell
+$env:EMBED_API = 'http://127.0.0.1:8091/v1/embeddings'
+```
+
+Переменная действует до закрытия окна. Проверить: `echo $env:EMBED_API`.
+
+---
+
+## 6. Создать коллекции и загрузить данные
+
+**Зачем.** Это шаг 3.2–3.3 отчёта: шесть коллекций банковской предметной области,
+у двух из них — векторные поля (эмбеддинги), у четырёх справочников — только скалярные
+(плюс техническое векторное поле, см. ниже). Данные синтетические, но предметно
+корректные: продукты, проводки, клиенты, счета, карты, валюты.
+
+**Что делаем** (вариант А, LM Studio)
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\create_banking_collections.py --embedder api `
@@ -57,90 +305,520 @@ python -m venv .venv
   --api-model text-embedding-nomic-embed-text-v1.5 --recreate
 ```
 
-Создаются: `BankingProducts`, `Transactions` (векторы dim=768) и справочники
-`Currencies`, `Clients`, `Accounts`, `Cards`. Метрика `COSINE`, индекс `HNSW`.
+Вариант Б (локальный сервис): то же, но `--api-base http://127.0.0.1:8091/v1` и без `--api-key`.
 
-## 7. Роли, пользователи, ресурсные группы
+**Ожидаемый результат**
 
-```powershell
-.\.venv\Scripts\python.exe scripts\A6_rbac.py                       # роли, права, группы
-.\.venv\Scripts\python.exe scripts\steps\S12_rbac_setup.py          # чистая настройка RBAC
-.\.venv\Scripts\python.exe scripts\A6b_rbac_check.py                # проверка доступа
-.\.venv\Scripts\python.exe scripts\steps\S14_resource_groups.py     # ресурсные группы
+```
+[create] BankingProducts
+  вставлено products=30
+[create] Transactions
+  вставлено transactions=30
+[create] Currencies
+[create] Clients
+[create] Accounts
+[create] Cards
+  вставлено Currencies=10
+  вставлено Clients=10
+  вставлено Accounts=30
+  вставлено Cards=20
+[done] коллекции: ['BankingProducts', 'Transactions', 'Currencies', 'Clients', 'Accounts', 'Cards']
 ```
 
-## 8. Шаги, подтверждающие главу 3
+**Что при этом создаётся и почему именно так** (разбор разделов 3.2.2–3.2.3 и
+выводов главы 3):
 
-Все запускаются из корня репозитория:
-
-| Раздел отчёта | Команда | Что показывает |
+| Коллекция | Ключевые поля | Индексы |
 |---|---|---|
-| §3.2.2-3.2.3 | `scripts\steps\S06_schema.py` | схема 6 коллекций: поля, типы, индексы |
-| §3.3.1 | `scripts\steps\S17_embedding_vector.py` | значения вектора `description_vector` |
-| §3.3.3 | `scripts\steps\S08_counts.py` | число строк в каждой коллекции |
-| §3.4.1 | `scripts\steps\S09_search_products.py` | семантический поиск продуктов |
-| §3.4.2 | `scripts\steps\S10_categorization.py` | категоризация по назначению платежа |
-| §3.4.3 | `scripts\steps\S11_anomalies.py` | аномалии: расстояние до центроида (θ = μ − 2σ) |
+| `BankingProducts` | `description_vector` FLOAT_VECTOR dim=768 | HNSW/COSINE (M=16, efConstruction=200), INVERTED(`product_type`), STL_SORT(`interest_rate`) |
+| `Transactions` | `purpose_vector` FLOAT_VECTOR dim=768 | HNSW/COSINE, INVERTED(`account_id`,`operation_type`,`mcc`), STL_SORT(`amount_minor`) |
+| `Currencies`, `Clients`, `Accounts`, `Cards` | справочные поля + **`_tech_vector`** dim=2 | FLAT/COSINE |
+
+Три платформенных особенности, из-за которых схема выглядит именно так
+(подтверждены на стенде, см. также выводы главы 3):
+
+1. **Коллекция Milvus не может существовать без векторного поля.** У справочников
+   векторов по смыслу нет, поэтому добавлено техническое поле `_tech_vector` dim=2.
+   Без него `create_collection` завершается ошибкой.
+2. **NULL допустим только у полей с `nullable=True`.** В `Transactions` поле `card_id`
+   объявлено `nullable=True`, потому что часть операций идёт без карты. Вставка `None`
+   в обычное поле отклоняется сервером.
+3. **`max_length` у VARCHAR считается в байтах, а не в символах.** Для кириллицы
+   в UTF-8 это 2 байта на символ, поэтому `max_length` берётся с запасом.
+   Практический пример разобран в §7.
+
+**Проверка через Attu (независимо от Python).** Обновите страницу
+<http://127.0.0.1:13000>: появятся шесть коллекций; в `BankingProducts` → Data Preview
+видно 30 записей с полем `description_vector` длиной 768.
+
+---
+
+## 7. Дополнительный шаг: коллекция обращений `SupportTickets` и гибридный поиск
+
+**Зачем.** Шесть коллекций из отчёта используют **один** способ поиска — векторный
+(dense, HNSW). Это не показывает двух важных возможностей Milvus, нужных в банке:
+
+* **полнотекстовый поиск BM25** — когда важно точное слово или аббревиатура
+  («СБП», «ЖКХ», номер договора), а не только смысл;
+* **гибридный поиск** — когда векторный результат объединяется с полнотекстовым
+  (`hybrid_search` с ранкером `RRFRanker`), и находится то, что каждый из методов
+  по отдельности пропускает.
+
+Третья предметная область — **обращения клиентов в поддержку** (карты, переводы,
+кредиты, вклады, безопасность, мобильное приложение) — типовой банковский сценарий,
+в котором такая комбинация применяется.
+
+**Что создаёт скрипт** `scripts/steps/S18_support_tickets.py`
+
+* коллекцию `SupportTickets` (12 полей) с 30 обращениями;
+* `body_vector` (FLOAT_VECTOR dim=768) — вектор текста обращения, считается моделью
+  эмбеддингов, как в §6;
+* `body_sparse` (SPARSE_FLOAT_VECTOR) — разреженный вектор, который **заполняет сам
+  Milvus**: в схеме объявлена функция `Function(BM25)` для поля `body`
+  (у него `enable_analyzer=True`), поэтому «мешок слов» с весами BM25 строится
+  автоматически при вставке;
+* индексы: HNSW/COSINE (`body_vector`), SPARSE_INVERTED_INDEX/BM25 (`body_sparse`),
+  INVERTED по `channel`, `priority`, `category`, `status`;
+* четыре поисковых сценария (BM25, dense, гибрид, гибрид+фильтр) и статистику по каналам.
+
+**Что делаем**
+
+```powershell
+.\.venv\Scripts\python.exe scripts\steps\S18_support_tickets.py --keep
+```
+
+Флаг `--keep` оставляет коллекцию в Milvus (без него скрипт удаляет её в конце) —
+удобно, чтобы затем посмотреть её в Attu.
+
+**Ожидаемый результат** (фрагмент проверенного прогона)
+
+```
+модель эмбеддингов: text-embedding-nomic-embed-text-v1.5 (http://127.0.0.1:8091/v1/embeddings)
+сервер Milvus: 3.0.1
+[create] SupportTickets: 12 полей, индексы HNSW/COSINE + SPARSE_INVERTED_INDEX/BM25 + 4 x INVERTED
+[check] длины текстовых полей (байт UTF-8; кириллица = 2 байта на символ):
+    subject   макс.   93 байт (символов: 49)
+    body      макс.  313 байт (символов: 169)
+    category  макс.   39 байт (символов: 20)
+[insert] 30 обращений (body_sparse заполнен Milvus автоматически через Function BM25)
+[load] коллекция загружена в память
+
+  1) ПОЛНОТЕКСТОВЫЙ поиск (BM25 по sparse): 'перевод СБП получатель'
+    1.  2.3507 | normal   call_center [Переводы             ] Перевод завис в обработке
+    2.  2.1550 | high     mobile_app  [Переводы             ] Не приходит код подтверждения по СМС
+    3.  1.7244 | normal   web         [Переводы             ] Не пришёл перевод через СБП
+
+  2) СЕМАНТИЧЕСКИЙ поиск (dense, COSINE): 'не может снять деньги в банкомате'
+    1.  0.8044 | low      atm         [Обслуживание         ] Банкомат не печатает чек
+    ...
+
+5) СТАТИСТИКА по каналам (query с count(*))
+    mobile_app     8   (26.7%)
+    call_center    7   (23.3%)
+    web            6   (20.0%)
+    branch         5   (16.7%)
+    atm            4   (13.3%)
+    ВСЕГО         30
+    критичных обращений: 4
+
+[keep] коллекция SupportTickets оставлена в Milvus
+```
+
+**Как читать результат.**
+
+* Сценарий 1: запрос — набор слов; BM25 находит обращения, где эти слова реально
+  встречаются. «distance» здесь — вес BM25 (больше = релевантнее), а не косинус.
+* Сценарий 2: запрос сформулирован иначе, чем данные, но находится по смыслу
+  (косинус 0.80 у самого близкого) — это и есть векторный поиск.
+* Сценарий 3: ранкер RRF сливает два ранжирования; сверху — записи, релевантные
+  и по словам, и по смыслу.
+* Сценарий 4: добавлен скалярный фильтр (`priority=="critical" and status=="open"`);
+  из 30 обращений остаются только два критичных открытых.
+
+**Две ловушки, на которых спотыкаются при первом запуске** (обе воспроизведены и
+устранены в скрипте — полезно знать при написании своего кода):
+
+1. *Длина строки.* Если объявить `category` как `VARCHAR(max_length=30)`, вставка
+   упадёт: `length of varchar field category exceeds max length, row number: 0, length: 39,
+   max length: 30`. Причина — **39 байт** для 20 кириллических символов. Считайте длину
+   в байтах: `len(text.encode('utf-8'))`. Скрипт печатает эти длины заранее (блок
+   `[check]`), чтобы схему можно было подобрать осознанно.
+2. *Фильтр в гибридном поиске.* `expr` задаётся у **каждого** `AnnSearchRequest`.
+   Если указать фильтр только у одного подзапроса, в выдаче всё равно появятся строки
+   из второго подзапроса — фильтр «не применится». Задавайте одинаковое условие у всех.
+
+**Проверка через Attu.** В списке коллекций появится `SupportTickets`: 12 полей,
+индексы `body_vector` (HNSW) и `body_sparse` (SPARSE_INVERTED_INDEX), 30 записей.
+Там же в Search можно повторить гибридный поиск руками.
+
+---
+
+## 8. Роли, пользователи, ресурсные группы
+
+**Зачем.** Раздел 3.5 отчёта: Milvus разграничивает доступ ролями и привилегиями
+на уровне коллекций, а ресурсные группы распределяют QueryNode между нагрузками.
+Цель шага — настроить конфигурацию и **доказать её проверкой**: под каждым
+пользователем выполнить и разрешённую, и запрещённую операцию.
+
+**Что делаем** (четыре команды, порядок важен)
+
+```powershell
+.\.venv\Scripts\python.exe scripts\steps\S12_rbac_setup.py    # чистая настройка: роли, пользователи, права
+.\.venv\Scripts\python.exe scripts\A6b_rbac_check.py          # проверка разграничения доступа
+.\.venv\Scripts\python.exe scripts\steps\S14_resource_groups.py  # ресурсные группы
+```
+
+`S12` удаляет прежние роли/пользователей работы и создаёт их заново (чтобы вывод был
+«с нуля»), внутри он вызывает `scripts/A6_rbac.py`.
+
+**Что создаётся**
+
+| Сущность | Значение |
+|---|---|
+| Роль `analyst` | `Transactions`: Search, Query, Insert, Delete, Upsert; `BankingProducts`: Search, Query |
+| Роль `viewer` | `BankingProducts`: Search, Query (и **ничего** в `Transactions`) |
+| Роль `admin` | встроенная, не создаётся |
+| Пользователи | `admin_user` / `AdminPass123!`, `analyst_user` / `AnalystPass123!`, `viewer_user` / `ViewerPass123!` |
+| Ресурсные группы | `rg_high_priority` (для `Transactions`), `rg_low_priority` (для `BankingProducts`) |
+
+**Ожидаемый результат `A6b_rbac_check.py`** — таблица, в которой все строки помечены `OK`:
+
+```
+viewer_user    BankingProducts  search             got=ALLOW expect=ALLOW OK
+viewer_user    Transactions     search             got=DENY  expect=DENY  OK
+viewer_user    Transactions     insert             got=DENY  expect=DENY  OK
+analyst_user   BankingProducts  search             got=ALLOW expect=ALLOW OK
+analyst_user   Transactions     search             got=ALLOW expect=ALLOW OK
+analyst_user   Transactions     insert             got=ALLOW expect=ALLOW OK
+analyst_user   Transactions     create_collection  got=DENY  expect=DENY  OK
+
+ИТОГ: все проверки совпали
+```
+
+**Почему это доказательство, а не «настройка ради настройки».** Проверка выполняет
+**реальные** обращения к серверу под каждым пользователем: `viewer` получает
+`PERMISSION_DENIED` на `Transactions`, `analyst` — нет; `analyst` не может создавать
+коллекции. Сообщения об отказах в логе (`PERMISSION_DENIED: PrivilegeSearch: permission
+deny to viewer_user`) — это и есть ожидаемый результат, а не ошибка стенда.
+
+**Важная деталь реализации.** Проверка права `Insert` действительно вставляет строку
+в `Transactions`, но **сразу же удаляет её** — иначе в коллекции оставалась бы служебная
+строка с нулевым вектором, которая искажала бы статистику §9 (`S08`) и попадала в список
+«аномалий» `S11` со сходством 0.0000. После проверки в `Transactions` снова ровно 30 строк.
+
+**Ожидаемый результат `S14_resource_groups.py`**
+
+```
+Ресурсные группы:
+  __default_resource_group доступно узлов=1  ёмкость=1000000
+  rg_high_priority         доступно узлов=0  ёмкость=0
+  rg_low_priority          доступно узлов=0  ёмкость=0
+
+Привязка коллекций к группам (collection.resource_groups):
+  Transactions       -> rg_high_priority
+  BankingProducts    -> rg_low_priority
+```
+
+**Как это понимать (важный вывод отчёта).** На standalone-стенде физически **один**
+QueryNode, и он остаётся в группе по умолчанию: `доступно узлов=1` у
+`__default_resource_group` и `0` у созданных групп. Поэтому наличие двух групп и
+привязки коллекций **не** доказывает физическую изоляцию нагрузок — это ограничение
+конфигурации, а не ошибка. Проверено, что привязка при этом не ломает поиск:
+`load_collection` и `search` по обеим коллекциям продолжают работать.
+
+**Проверка через Attu.** В разделе **Users & Roles** видны роли `analyst`, `viewer` и три
+пользователя работы; в настройках коллекции `Transactions` указана группа
+`rg_high_priority`.
+
+---
+
+## 9. Шаги, подтверждающие разделы главы 3
+
+**Зачем.** Каждый скрипт — короткая проверка одного утверждения отчёта. Их удобно
+прогонять по одному и сверять вывод с текстом соответствующего раздела.
 
 ```powershell
 .\.venv\Scripts\python.exe scripts\steps\S06_schema.py
-.\.venv\Scripts\python.exe scripts\steps\S17_embedding_vector.py
 .\.venv\Scripts\python.exe scripts\steps\S08_counts.py
+.\.venv\Scripts\python.exe scripts\steps\S17_embedding_vector.py
 .\.venv\Scripts\python.exe scripts\steps\S09_search_products.py
 .\.venv\Scripts\python.exe scripts\steps\S10_categorization.py
 .\.venv\Scripts\python.exe scripts\steps\S11_anomalies.py
 ```
 
-## 9. Эксперименты (§3.6)
+(Скрипты `S09`, `S10`, `S11` обращаются к сервису эмбеддингов — см. §5: для варианта Б
+задайте `$env:EMBED_API`.)
+
+| Раздел отчёта | Скрипт | Что доказывает | Ожидаемый результат (проверенный прогон) |
+|---|---|---|---|
+| §3.2.2–3.2.3 | `S06_schema.py` | схема и индексы двух коллекций | 10 полей в `BankingProducts` (в т.ч. `description_vector FLOAT_VECTOR(dim=768)`; `nullable` у трёх полей) и 10 в `Transactions`; индексы по векторному и скалярным полям |
+| §3.3.3 | `S08_counts.py` | сколько строк реально загружено | `BankingProducts 30`, `Transactions 30`, `Currencies 10`, `Clients 10`, `Accounts 30`, `Cards 20`; у всех статус `Loaded` |
+| §3.3.1 | `S17_embedding_vector.py` | что такое эмбеддинг: значения компонент и нормы | размерность 768; «норма ‖v‖: min 1.000000 max 1.000000» — векторы **нормированные**; первые 12 компонент со знаком; 30 записей дают 7 уникальных векторов (в демо-наборе описания продуктов повторяются) |
+| §3.4.1 | `S09_search_products.py` | семантический поиск продуктов | по трём запросам топ-3 с косинусом ≈ 0.71–0.77: на «вклад с высокой ставкой» — вклады, на «кредит наличными» — кредиты, на «карта с кэшбэком» — карты; плюс поиск с фильтром `product_type == 'deposit' and interest_rate > 7.5` |
+| §3.4.2 | `S10_categorization.py` | категоризация: похожие назначения платежей | по трём запросам топ-3 с косинусом ≈ 0.74–0.82; в выдаче видно поле `mcc` (код категории) |
+| §3.4.3 | `S11_anomalies.py` | аномалии как отклонение от центроида, θ = μ − 2σ | печатает `μ`, `σ`, `θ`, затем 30 назначений с их сходством и меткой `АНОМАЛИЯ`; отдельно проверяет 3 новых назначения, которых нет в коллекции |
+
+**Дополнительно (сквозной сценарий).** `scripts/A3_A4_A5_embed_search_anomaly.py`
+прогоняет всё сразу на реальной модели: размерность и нормы эмбеддингов, влияние префиксов
+`search_document:`/`search_query:`, семантический поиск, центроид и эквивалентность метрик
+L2/IP/COSINE. Самый быстрый способ увидеть работу модели целиком.
+
+**Как честно трактовать `S11`.** Порог θ = μ − 2σ «подвешен» к собственным данным коллекции,
+поэтому число помеченных исторических операций нестабильно: в эталонном прогоне отчёта
+помечены 3 из 30 (все — снятия наличных), в контрольном прогоне с другим способом
+получения эмбеддингов — 0 из 30 (θ = 0.8613 при минимальном сходстве 0.8637, то есть
+порог «не дотягивается» до хвоста распределения). Оба результата корректны: это свойство
+метода, и отчёт прямо оговаривает, что качество детектора без независимой разметки не
+установлено. Устойчиво другое: три **новых** подозрительных назначения (включая
+«перевод средств в криптовалютный обменник без назначения») оказываются ниже порога во всех
+прогонах.
+
+---
+
+## 10. Эксперименты §3.6
+
+**Зачем.** Раздел 3.6 — измерительная часть: влияние параметров индекса на скорость и
+полноту поиска, сравнение типов индексов, влияние фильтрации, эквивалентность метрик.
+Замеры идут на **искусственных** векторах (50 000 × 768), а не на эмбеддингах: так
+измеряется работа индекса Milvus, а не скорость модели, и результат воспроизводим.
+
+### 10.1. Бенчмарк (A7) — около 10–15 минут
 
 ```powershell
-.\.venv\Scripts\python.exe scripts\A7_benchmark.py --n 50000 --queries 100 --runs 5
-.\.venv\Scripts\python.exe scripts\steps\S15_metrics.py             # таблицы 3.1-3.5
-.\.venv\Scripts\python.exe scripts\steps\S16_categorization_eval.py # Precision/Recall/F1
+.\.venv\Scripts\python.exe scripts\A7_benchmark.py --n 50000 --queries 100 --runs 5 --warmup 20
 ```
 
-Замеры сохраняются в `scripts/benchmark_result.json` — именно его читает `S15_metrics.py`.
-
-## 10. Остановить / удалить
+Быстрая проверка, что скрипт рабочий (около минуты):
 
 ```powershell
-docker compose stop      # пауза (данные сохраняются)
-docker compose down      # удалить контейнеры (данные в volumes остаются)
-docker compose down -v   # удалить всё вместе с данными (чистый старт)
+.\.venv\Scripts\python.exe scripts\A7_benchmark.py --n 5000 --queries 20 --runs 1 --warmup 3
 ```
 
-## 11. Если что-то не так
+**Что происходит по шагам:** генерируются структурированные векторы (скрытая размерность 32,
+100 кластеров, нормировка — как у реальных эмбеддингов); считается точный эталон
+`FLAT/COSINE` для 5 наборов запросов; затем строятся индексы и замеряются `efConstruction`,
+`ef`, `FLAT/IVF_FLAT/HNSW/IVF_SQ8`, скалярные фильтры и метрики `L2/IP/COSINE`.
+Память — прирост RSS контейнера `milvus-standalone`.
 
-| Симптом | Что делать |
-|---|---|
-| Attu не открывается | `docker compose ps` — ждать `healthy`; проверить порт 13000 |
-| `UNAUTHENTICATED` в Attu | в Connect: host `milvus`, user `root`, password `MilvusDemo123`; удалить соединение без пароля |
-| Скрипт: `Connection refused` | Milvus ещё не поднялся либо порт 19530 занят |
-| Эмбеддинги: `401/403` | включён Require Authentication — задайте `EMBED_KEY` (`sk-lm-…`) |
-| Эмбеддинги: `connection refused` | LM Studio не запущен либо другой порт (`EMBED_API`) |
-| Порт 14000 занят | измените левую часть `ports` в `docker-compose.yml`, например `"14000:3000"` |
-| Нужны логи | `docker compose logs milvus-standalone --tail 100` |
+**Ожидаемый результат (проверенный прогон), фрагмент сводки:**
 
-## 12. Шпаргалка
+```
+3.1 efConstruction=200: построение 2.7 с, поиск пакетом 0.14±0.02 мс/запрос, задержка 2.55 мс, Recall@10 0.814
+3.2 ef=64: поиск пакетом 0.12±0.01 мс/запрос, задержка 2.55 мс, Recall@10 0.814
+3.3 HNSW (M=16, efC=200, ef=64): построение 3.2 с, поиск 0.18 мс, задержка 2.81 мс, Recall@10 0.808, память 249.2 МБ
+3.3 IVF_SQ8 (nlist=224, nprobe=16): построение 2.2 с, поиск 0.16 мс, задержка 2.56 мс, Recall@10 0.972, память 19.5 МБ
+3.5 L2: Recall 1.0, совпадение с COSINE=True
+3.6.6 (не нормировано): Recall(COSINE vs L2) = 0.039, совпадение=False
+```
+
+Результаты записываются в `scripts/benchmark_result.json`.
+
+**Важно про эталонный файл.** В репозитории `scripts/benchmark_result.json` — эталонный
+прогон, по которому построены таблицы 3.1–3.5 отчёта. Запуск `A7_benchmark.py`
+**перезаписывает** его своими числами. Чтобы вернуть эталон:
 
 ```powershell
-# поднять стенд
+git checkout -- scripts/benchmark_result.json
+```
+
+### 10.2. Таблицы §3.6 (S15) — несколько секунд
+
+```powershell
+.\.venv\Scripts\python.exe scripts\steps\S15_metrics.py
+```
+
+Скрипт читает `scripts/benchmark_result.json` и печатает пять таблиц: влияние
+`efConstruction`, влияние `ef`, сравнение индексов, скалярные фильтры, метрики на
+нормированных векторах, а также итог по ненормированным. Сверяйте с таблицами 3.1–3.5
+отчёта и с эталонными числами из §15.
+
+### 10.3. Качество категоризации (S16) — около минуты
+
+```powershell
+.\.venv\Scripts\python.exe scripts\steps\S16_categorization_eval.py
+```
+
+Методика: пять эталонных категорий (супермаркеты, ЖКХ, транспорт, кафе, аптеки) с кодами MCC;
+классификация 30 размеченных вручную формулировок — по ближайшему прототипу (косинус).
+
+**Ожидаемый результат** — таблица Precision/Recall/F1 и итог:
+
+```
+Категория               MCC   Precision  Recall  F1
+Продукты и супермаркеты 5411  0.67   0.67  0.67
+Коммунальные услуги     4900  0.50   0.67  0.57
+Транспорт и такси       4121  1.00   0.33  0.50
+Рестораны и кафе        5812  0.50   0.67  0.57
+Аптеки                  5912  0.67   0.67  0.67
+Среднее (macro)         —     0.67   0.60  0.60
+
+ИТОГ: корректно классифицировано 18 из 30 формулировок (accuracy = 0.60).
+```
+
+**Почему числа могут отличаться от таблицы 3.6 отчёта.** Отчёт даёт macro-F1 = 0.68
+(20 из 30 при LM Studio), контрольный прогон через локальный сервер — 0.60 (18 из 30).
+Причина не в ошибке: одна и та же модель в разных рантаймах (LM Studio/GGUF и
+`sentence-transformers`/HF) даёт близкие, но не побитово одинаковые векторы, а решение
+здесь принимается «кто ближе» — на границе две формулировки меняют ответ. Именно поэтому
+в отчёте выводы сформулированы как оценка метода, а не как точное число.
+
+---
+
+## 11. Шпаргалка: полная последовательность копипастом
+
+```powershell
+# 1) материалы
+git clone https://github.com/one6way/milvus-attu-doc.git
+cd milvus-attu-doc
+
+# 2) стенд
 docker compose up -d
-# браузер: http://127.0.0.1:13000  (админ Attu: admin / AttuDemo123!)
+docker compose ps                       # ждём healthy у milvus-standalone
+curl http://127.0.0.1:9091/healthz      # OK
+# браузер: http://127.0.0.1:13000  ->  admin / AttuDemo123!
 #          Connect: milvus / 19530 / root / MilvusDemo123
 
-# данные и проверки
+# 3) Python-окружение
+python -m venv .venv
+.\.venv\Scripts\python.exe -m pip install pymilvus==3.0.2 requests numpy python-docx
+
+# 4) эмбеддинги (вариант А: LM Studio, порт 1234; вариант Б: локально)
+# .\.venv\Scripts\python.exe -m pip install sentence-transformers
+# .\.venv\Scripts\python.exe scripts\embed_server_local.py --port 8091 --prefix=
+# $env:EMBED_API = 'http://127.0.0.1:8091/v1/embeddings'
+
+# 5) данные
 .\.venv\Scripts\python.exe scripts\create_banking_collections.py --embedder api `
-  --api-base http://127.0.0.1:1234/v1 --api-key "<токен LM Studio>" --recreate
-.\.venv\Scripts\python.exe scripts\A6_rbac.py
+  --api-base http://127.0.0.1:8091/v1 --api-model text-embedding-nomic-embed-text-v1.5 --recreate
+
+# 6) новая коллекция обращений + гибридный поиск
+.\.venv\Scripts\python.exe scripts\steps\S18_support_tickets.py --keep
+
+# 7) роли, доступ, ресурсные группы
+.\.venv\Scripts\python.exe scripts\steps\S12_rbac_setup.py
+.\.venv\Scripts\python.exe scripts\A6b_rbac_check.py
+.\.venv\Scripts\python.exe scripts\steps\S14_resource_groups.py
+
+# 8) проверки главы 3
+.\.venv\Scripts\python.exe scripts\steps\S06_schema.py
+.\.venv\Scripts\python.exe scripts\steps\S08_counts.py
+.\.venv\Scripts\python.exe scripts\steps\S17_embedding_vector.py
 .\.venv\Scripts\python.exe scripts\steps\S09_search_products.py
 .\.venv\Scripts\python.exe scripts\steps\S10_categorization.py
 .\.venv\Scripts\python.exe scripts\steps\S11_anomalies.py
 
-# остановить
+# 9) эксперименты
+.\.venv\Scripts\python.exe scripts\A7_benchmark.py --n 50000 --queries 100 --runs 5 --warmup 20
+.\.venv\Scripts\python.exe scripts\steps\S15_metrics.py
+.\.venv\Scripts\python.exe scripts\steps\S16_categorization_eval.py
+
+# 10) остановка
 docker compose down
 ```
 
-> Пароли в репозитории **демонстрационные** (`MilvusDemo123`, `AttuDemo123!`).
-> Перед публикацией портов наружу смените `defaultRootPassword` в `docker/milvus-user.yaml`
-> и `ATTU_ADMIN_PASSWORD` в `docker-compose.yml`.
+---
+
+## 12. Если что-то не так (расширенный troubleshooting)
+
+| Симптом | Причина | Что делать |
+|---|---|---|
+| `UNAUTHENTICATED: missing authorization in header` | креды не переданы: у `MilvusClient` второй позиционный аргумент — `user`, а не токен | передавать именованно: `token="root:MilvusDemo123"` или `user="root", password="MilvusDemo123"` |
+| `Fail connecting to server on 127.0.0.1:19530, illegal connection params or server unavailable` | неверные креды **или** контейнер не поднят | `docker compose ps`; креды `root` / `MilvusDemo123` |
+| `length of varchar field ... exceeds max length` | `max_length` считается в **байтах**; кириллица — 2 байта/символ | увеличить `max_length` (например `VARCHAR(60)` вместо 30) |
+| `ImportError: This modeling file requires ...: einops` | загрузка модели с `trust_remote_code=True` на `transformers` 5.x | не использовать `trust_remote_code` — в скриптах так и сделано |
+| `'NomicBertModel' object has no attribute 'get_extended_attention_mask'` | то же: remote-код модели рассчитан на `transformers` 4.x | обновить `transformers` до 5.x и грузить модель нативно (`SentenceTransformer("nomic-ai/nomic-embed-text-v1.5")` без `trust_remote_code`) |
+| `Connection refused` на `127.0.0.1:1234` | не запущен LM Studio / сервер не стартовал | запустить LM Studio (Developer → Start Server) либо вариант Б на порту 8091 |
+| `401/403` при вызове эмбеддингов | в LM Studio включён *Require Authentication* | передать `--api-key "<токен>"` (или задать `$env:EMBED_KEY`) |
+| Список коллекций в Attu пуст | выбрано другое соединение либо данные ещё не загружены | §6: запустить `create_banking_collections.py`; в Attu выбрать соединение `milvus:19530` |
+| `resource group node not enough [rg=__default_resource_group][currentNodeNum=0]` | эксперимент с переносом QueryNode (раздел 3.5.3) опустошил группу по умолчанию | вернуть узел: `.\.venv\Scripts\python.exe scripts\restore_rg.py` (скрипт откатывает группу и проверяет, что `load`/`search` снова работают) |
+| `S14` печатает `—` вместо числа узлов | `describe_resource_group` возвращает объект, а не словарь | в репозитории уже исправлено: значения берутся через атрибуты (`num_available_node`, `capacity`) |
+| Порт занят (`19530`, `13000`, `9000/9001`, `8091`) | на машине уже есть сервис на этом порту | поменять левую часть `ports` в `docker-compose.yml` или порт скрипта (`--port`) |
+| `milvus-standalone` не становится `healthy` | мало памяти у Docker Desktop | Settings → Resources → не менее 6 ГБ; логи: `docker compose logs milvus-standalone --tail 100` |
+| Кириллица в консоли «кракозябрами» | кодовая страница терминала | запускать скрипты с `-X utf8` (так во всех командах) и при необходимости `chcp 65001` |
+| Скачивание модели идёт очень медленно | анонимные запросы к Hugging Face ограничены | задать `$env:HF_TOKEN = "hf_..."` перед загрузкой модели |
+| `S09/S10/S11/S16` не находят данные | подключены к другому стенду/имени БД | проверить `$env:MILVUS_URI` (по умолчанию `http://127.0.0.1:19530`) и что коллекции созданы (§6) |
+
+---
+
+## 13. Остановка, перезапуск, полная очистка
+
+**Зачем.** Понять, где живут данные: в docker-томах. Контейнеры можно удалять и создавать
+заново — коллекции сохранятся, пока живы тома.
+
+```powershell
+docker compose stop        # остановить контейнеры (тома с данными остаются)
+docker compose up -d       # запустить снова — коллекции на месте
+docker compose down        # удалить контейнеры и сеть, тома с данными остаются
+docker compose down -v     # удалить контейнеры И тома — полный сброс, коллекции исчезнут
+```
+
+**Что делать после `down -v`.** Данные удалены, поэтому нужно заново выполнить §6
+(при необходимости — §7 и §8): `--recreate` в `create_banking_collections.py` создаст
+коллекции с нуля. Локальный сервер эмбеддингов и LM Studio к docker не относятся —
+их нужно перезапускать отдельно.
+
+**Если экспериментировали с ресурсными группами (раздел 3.5.3)** и после этого
+`load`/`search` стали падать с `resource group node not enough`, верните узел:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\restore_rg.py
+.\.venv\Scripts\python.exe scripts\steps\S14_resource_groups.py   # проверка: узел вернулся в группу по умолчанию
+```
+
+**Полная очистка «под ноль»** (освободить диск): `docker compose down -v`, затем при желании
+удалить кэш модели Hugging Face — `%USERPROFILE%\.cache\huggingface`.
+
+---
+
+## 14. Чек-лист проверяющего
+
+Отмечайте по порядку. Если все признаки на месте, работа воспроизведена полностью.
+
+| # | Шаг | Признак успеха |
+|---|---|---|
+| 1 | `docker compose ps` | 4 контейнера, у трёх — `(healthy)` |
+| 2 | `curl http://127.0.0.1:9091/healthz` | `OK` |
+| 3 | Attu <http://127.0.0.1:13000> | вход `admin` / `AttuDemo123!`, соединение `milvus:19530` работает |
+| 4 | Проверка Python (§4) | `pymilvus 3.0.2`, `server 3.0.1` |
+| 5 | Сервис эмбеддингов (§5) | `/v1/models` отвечает; эмбеддинг из 768 чисел с нормой 1.0 |
+| 6 | `create_banking_collections.py` | 6 коллекций; `products=30`, `transactions=30`, `Currencies=10`, `Clients=10`, `Accounts=30`, `Cards=20` |
+| 7 | `S18_support_tickets.py --keep` | `[insert] 30 обращений`; 4 поисковых сценария выводят результаты; в Attu есть `SupportTickets` |
+| 8 | `S12_rbac_setup.py` | созданы роли `analyst`, `viewer`; пользователи `admin_user`, `analyst_user`, `viewer_user` |
+| 9 | `A6b_rbac_check.py` | 7 строк, все `OK`, «ИТОГ: все проверки совпали» |
+| 10 | `S14_resource_groups.py` | 2 группы, 2 привязки; `доступно узлов=1` у группы по умолчанию |
+| 11 | `S06_schema.py` | у `description_vector`/`purpose_vector` размерность 768, видны индексы |
+| 12 | `S08_counts.py` | `30 / 30 / 10 / 10 / 30 / 20`, все `Loaded` |
+| 13 | `S17_embedding_vector.py` | размерность 768, нормы `1.000000`, 7 уникальных векторов на 30 записей |
+| 14 | `S09_search_products.py` | на «вклад…» — вклады, на «кредит…» — кредиты, на «карта…» — карты; косинус ≈ 0.71–0.77 |
+| 15 | `S10_categorization.py` | похожие назначения платежей с кодами `mcc`; косинус ≈ 0.74–0.82 |
+| 16 | `S11_anomalies.py` | напечатаны `μ`, `σ`, `θ` и список 30 операций; проверены 3 новых назначения |
+| 17 | `A7_benchmark.py` | сводка по 3.1–3.6.6, Recall@10 растёт с `efConstruction` и `ef`; создан/обновлён `scripts/benchmark_result.json` |
+| 18 | `S15_metrics.py` | напечатаны 5 таблиц, числа совпадают с таблицами 3.1–3.5 отчёта |
+| 19 | `S16_categorization_eval.py` | таблица Precision/Recall/F1 по 5 категориям и итоговая accuracy |
+
+---
+
+## 15. Эталонные значения и допустимый разброс
+
+В отчёте приведены числа эталонного прогона. Ниже — они же рядом с результатами
+контрольного прогона на другом способе получения эмбеддингов (локальный сервер).
+Так проверяющий видит, какие расхождения нормальны, а какие означают проблему.
+
+| Показатель | Эталон (отчёт) | Контрольный прогон | Комментарий |
+|---|---|---|---|
+| Recall@10, efConstruction=50 / 100 / 200 / 400 | 0.615 / 0.747 / 0.825 / 0.908 | 0.603 / 0.753 / 0.814 / 0.908 | расхождение ≤ 0.02 — норма: построение графа HNSW недетерминировано |
+| Recall@10, ef=16 / 64 / 256 | 0.581 / 0.825 / 0.978 | 0.588 / 0.814 / 0.971 | то же |
+| Задержка одиночного поиска, HNSW | 2.49–2.91 мс | 2.47–3.05 мс | зависит от загрузки CPU |
+| Память индексов | FLAT 185, IVF_FLAT 210, HNSW 151, IVF_SQ8 85 МБ | FLAT 227, IVF_FLAT 257, HNSW 249, IVF_SQ8 20 МБ | «память» — прирост RSS контейнера; величина зависит от состояния кэша ОС |
+| L2 = IP = COSINE на нормированных векторах | совпадение топ-10 = True | совпадение = True | проверяется детерминированно, расхождений быть не должно |
+| COSINE против L2 на ненормированных | Recall = 0.039 | Recall = 0.039 | воспроизводится точно |
+| S16 macro-F1 (категоризация) | 0.68 (20 из 30) | 0.60 (18 из 30) | зависит от рантайма модели: LM Studio/GGUF против HF/sentence-transformers |
+| S11: помечено аномалий из 30 | 3 (все — снятия наличных) | 0 при θ = 0.8613 (мин. сходство 0.8637) | порог «касается» хвоста распределения — свойство метода, а не ошибка |
+| Число строк в коллекциях | 30 / 30 / 10 / 10 / 30 / 20 | то же | должно совпадать точно |
+| RBAC-проверки | 7 из 7 совпали | 7 из 7 совпали | должно совпадать точно |
+
+**Как отличить «нормальный разброс» от проблемы.** Точные и структурные результаты
+(число строк, состав полей и индексов, тип ответа RBAC, `True`/`False` по метрикам,
+итог по ненормированным векторам) должны совпадать **всегда**. Плавающими являются только
+времена, объём памяти и метрики качества, зависящие от рантайма модели (S16) или от
+геометрии данных (S11). Если «плавает» что-то из первой группы — вернитесь к §12.
