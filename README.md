@@ -23,7 +23,7 @@ cd milvus-attu-doc
 
 docker compose up -d          # etcd + MinIO + Milvus + Attu
 docker compose ps             # ждать healthy у milvus-standalone (1-2 мин)
-curl http://127.0.0.1:9091/healthz   # ответ: OK
+curl.exe http://127.0.0.1:9091/healthz   # ответ: OK
 
 py -3.11 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install pymilvus==3.0.2 requests numpy
